@@ -21,7 +21,7 @@
 
 # Projeto - Sistema de Agendamento MedLink
 
-**O MedLink é um sistema de agendamento de consultas desenvolvido como parte da disciplina de Engenharia de Software.**  
+**O MedLink é um sistema de agendamento de consultas desenvolvido como parte da disciplina de Projeto de Sistemas.**  
 
 O projeto tem como objetivo oferecer uma solução **simples, acessível e eficiente** para clínicas conjuntas de médicos, geralmente profissionais em início de carreira que precisam de mais organização no dia a dia.  
 
