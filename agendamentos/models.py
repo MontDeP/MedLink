@@ -1,17 +1,12 @@
-# agendamentos/models.py
 from django.db import models
 from django.utils.translation import gettext_lazy as _
 from users.models import User
 from pacientes.models import Paciente
-# from clinicas.models import Clinica
+from clinicas.models import Clinica # Importa o modelo Clinica
 from .consts import (
     STATUS_CONSULTA_CHOICES, STATUS_CONSULTA_PENDENTE,
     STATUS_PAGAMENTO_CHOICES, STATUS_PAGAMENTO_PENDENTE,
 )
-
-# A seguir, está o código dos modelos de agendamento.
-# Os modelos 'Medico' e 'Clinica' ainda precisam ser criados em seus respectivos apps.
-# Por enquanto, estamos usando 'User' como um placeholder para 'Medico' e 'Clinica'.
 
 class Consulta(models.Model):
     """
@@ -37,7 +32,7 @@ class Consulta(models.Model):
     # 1. Com o Paciente
     paciente = models.ForeignKey(
         Paciente,
-        on_delete=models.CASCADE, #isso faz com que se o paciente for deletado, todas as consultas associadas a ele sejam deletadas tambem
+        on_delete=models.CASCADE,
         related_name='consultas_agendadas',
         verbose_name=_('Paciente')
     )
@@ -46,16 +41,15 @@ class Consulta(models.Model):
     # Por enquanto, usamos `User` com um filtro para o tipo de usuário `MEDICO`.
     medico = models.ForeignKey(
         User,
-        on_delete=models.RESTRICT, #isso faz com que nao seja possivel deletar um medico se ele tiver consultas associadas
+        on_delete=models.RESTRICT,
         limit_choices_to={'user_type': 'MEDICO'},
         related_name='consultas_realizadas',
         verbose_name=_('Médico')
     )
     
-    # 3. Com a Clínica. O modelo `Clinica` precisa ser criado em um app separado.
-    # Por enquanto, usamos `User` como um placeholder.
+    # 3. Com a Clínica. Agora referenciando o novo modelo `Clinica`.
     clinica = models.ForeignKey(
-        User, # Este campo deve se referir ao modelo `Clinica` após sua criação.
+        Clinica, # Referência corrigida para o modelo Clinica
         on_delete=models.RESTRICT,
         related_name='consultas_sediadas',
         verbose_name=_('Clínica')
@@ -83,7 +77,7 @@ class Pagamento(models.Model):
     """
     Representa a tabela `Pagamentos` no banco de dados.
     Mantida separada da Consulta para clareza e escalabilidade,
-    conforme as melhores práticas.
+    conforme as melhores práticas [cite: Medlink-bd-main/README.md].
     """
     consulta = models.OneToOneField(
         Consulta,
@@ -129,7 +123,7 @@ class Pagamento(models.Model):
 class ConsultaStatusLog(models.Model):
     """
     Representa a tabela de auditoria `ConsultaStatusLog` no banco de dados.
-    É usada para rastrear as mudanças de status da consulta.
+    É usada para rastrear as mudanças de status da consulta [cite: Medlink-bd-main/README.md].
     """
     status_novo = models.CharField(
         max_length=50,
