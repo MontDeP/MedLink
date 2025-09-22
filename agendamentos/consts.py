@@ -1,0 +1,24 @@
+# agendamentos/consts.py
+from django.utils.translation import gettext_lazy as _
+
+# Opções para o status da consulta
+STATUS_CONSULTA_PENDENTE = 'PENDENTE'
+STATUS_CONSULTA_CONFIRMADA = 'CONFIRMADA'
+STATUS_CONSULTA_CANCELADA = 'CANCELADA'
+STATUS_CONSULTA_CONCLUIDA = 'CONCLUIDA'
+
+STATUS_CONSULTA_CHOICES = (
+    (STATUS_CONSULTA_PENDENTE, _('Pendente')),
+    (STATUS_CONSULTA_CONFIRMADA, _('Confirmada')),
+    (STATUS_CONSULTA_CANCELADA, _('Cancelada')),
+    (STATUS_CONSULTA_CONCLUIDA, _('Concluída')),
+)
+
+# Opções simplificadas para o status do pagamento
+STATUS_PAGAMENTO_PENDENTE = 'PENDENTE'
+STATUS_PAGAMENTO_PAGO = 'PAGO'
+
+STATUS_PAGAMENTO_CHOICES = (
+    (STATUS_PAGAMENTO_PENDENTE, _('Pendente')),
+    (STATUS_PAGAMENTO_PAGO, _('Pago')),
+)
