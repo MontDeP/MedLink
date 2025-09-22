@@ -1,11 +1,11 @@
-# pacientes/views.py (Versão Correta)
-
+# pacientes/views.py
 from rest_framework import generics
 from .models import Paciente
-from .serializers import PacienteSerializer # <-- Garanta que esta linha está correta
-from users.permissions import IsMedicoOrSecretaria 
+from .serializers import PacienteSerializer
+from users.permissions import IsMedicoOrSecretaria
 
-class PacienteListView(generics.ListAPIView):
+# View que permite listar e criar pacientes
+class PacienteListCreateView(generics.ListCreateAPIView):
     queryset = Paciente.objects.all()
     serializer_class = PacienteSerializer
     permission_classes = [IsMedicoOrSecretaria]

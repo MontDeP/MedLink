@@ -1,16 +1,19 @@
-# users/permissions.py
 from rest_framework.permissions import BasePermission
 
 class IsMedicoOrSecretaria(BasePermission):
     """
     Permissão customizada para permitir acesso apenas para usuários
-    do tipo MÉDICO ou SECRETÁRIA.
+    do tipo MÉDICO, SECRETÁRIA ou superusuários.
     """
 
     def has_permission(self, request, view):
-        # Verifica se o usuário está autenticado
+        # Se for superuser, permite sempre
+        if request.user and request.user.is_superuser:
+            return True
+        
+        # Se não estiver logado, bloqueia
         if not request.user or not request.user.is_authenticated:
             return False
         
-        # Verifica se o tipo de usuário é Médico ou Secretária
+        # Permite apenas Médicos ou Secretárias
         return request.user.user_type in ['MEDICO', 'SECRETARIA']
