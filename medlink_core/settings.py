@@ -84,31 +84,16 @@ WSGI_APPLICATION = 'medlink_core.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
 
-# ARQUIVO: medlink_core/settings.py
-import dj_database_url
-import os
-
-# ... (outras configurações do arquivo) ...
-
-# Cole a sua Connection String do Supabase aqui dentro das aspas
-# Em medlink_core/settings.py
-
-# A string DEVE ser a URL de conexão completa, começando com postgres://
-# Senha original: Frozensegura20039822
-# Senha URL-encoded: Frozensegura20039822
-# ...existing code...
-DATABASE_URL = "postgres://postgres:Frozensegura20039822@db.ytjanjyyhulschfuginy.supabase.co:5432/postgres?sslmode=require"
 DATABASES = {
-    'default': dj_database_url.config(default=DATABASE_URL, conn_max_age=600)
+    'default': {
+        'ENGINE': 'django.db.backends.postgresql',
+        'NAME': 'postgres',
+        'USER': 'postgres',
+        'PASSWORD': 'ConexaoSupabase2025Sucesso',
+        'HOST': 'db.easwozssreokmtmodmrf.supabase.co',
+        'PORT': '5432',
+    }
 }
-# ...existing code...
-
-# DICA DE SEGURANÇA: No futuro, mova a DATABASE_URL para um arquivo .env
-# para não deixar sua senha exposta no código.
-
-
-# DICA DE SEGURANÇA: No futuro, mova a DATABASE_URL para um arquivo .env
-# para não deixar sua senha exposta no código.
 
 # Password validation
 # https://docs.djangoproject.com/en/5.2/ref/settings/#auth-password-validators

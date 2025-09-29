@@ -1,7 +1,12 @@
-# users/views.py
+
+from rest_framework.response import Response
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import AllowAny
+from rest_framework import status
 from rest_framework_simplejwt.views import TokenObtainPairView
 from .serializers import MyTokenObtainPairSerializer
-
+from .models import User
+# ...
 class MyTokenObtainPairView(TokenObtainPairView):
     serializer_class = MyTokenObtainPairSerializer
 
@@ -49,3 +54,21 @@ def register(request):
     except Exception as e:
         # Captura outros erros que possam ocorrer
         return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
+    # Adicione estas importações no topo do seu arquivo
+from rest_framework import generics
+from rest_framework.permissions import IsAuthenticated
+from .serializers import UserSerializer # Garanta que o UserSerializer já existe em users/serializers.py
+
+# ... (o código existente de MyTokenObtainPairView e register continua aqui) ...
+
+
+
+class UserListView(generics.ListAPIView):
+    """
+    View para listar todos os usuários do sistema.
+    Apenas usuários autenticados (com token JWT) podem acessar esta view.
+    """
+    queryset = User.objects.all().order_by('first_name') # Busca todos os usuários e ordena por nome
+    serializer_class = UserSerializer
+    permission_classes = [IsAuthenticated] # Protege a rota
