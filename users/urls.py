@@ -2,6 +2,7 @@
 
 from django.urls import path
 from django.contrib.auth import views as auth_views
+from .views import UserListView
 from . import views
 
 app_name = 'users'
@@ -13,4 +14,6 @@ urlpatterns = [
     ), name='login'),
     
     path('logout/', auth_views.LogoutView.as_view(), name='logout'),
+
+    path('register/', views.register, name='register'),
 ]
