@@ -992,7 +992,7 @@ class _SecretaryDashboardState extends State<SecretaryDashboard> {
                               type: typeController.text,
                               patientId: selectedPatient!.id,
                               doctorId: selectedDoctor!.id,
-                              clinicId: 4, // TODO: Pegar o ID da clínica logada
+                              clinicId: 1, // TODO: Pegar o ID da clínica logada
                             );
 
                             final response = await _apiService
