@@ -2,6 +2,7 @@
 import 'package:flutter/material.dart';
 import 'package:table_calendar/table_calendar.dart';
 import 'package:intl/intl.dart';
+import 'nova_consulta_page.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -219,7 +220,12 @@ class _HomePageState extends State<HomePage> {
             right: 20,
             child: FloatingActionButton(
               onPressed: () {
-                // abrir tela de novo agendamento
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const NovaConsultaPage(),
+                  ),
+                );
               },
               backgroundColor: const Color(0xFF317714),
               child: const Icon(Icons.add, size: 30),
