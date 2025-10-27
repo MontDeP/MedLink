@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:medlink/views/pages/home_page.dart';
+import 'package:medlink/views/pages/main_navigation.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter_web_plugins/url_strategy.dart';
 
@@ -101,7 +102,7 @@ class MyApp extends StatelessWidget {
         if (settings.name == '/user/dashboard') {
           return GetPageRoute(
             settings: settings,
-            page: () => const HomePage(),
+            page: () => const MainNavigation(),
           );
         }
         
