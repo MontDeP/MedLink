@@ -3,8 +3,6 @@ import 'package:intl/intl.dart';
 import 'dart:convert';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:jwt_decoder/jwt_decoder.dart';
-import '../../models/appointment_model.dart';
-import '../../models/consulta_dashboard_model.dart';
 import '../../services/api_service.dart';
 import '../../models/dashboard_stats_model.dart';
 import 'package:medlink/models/appointment_model.dart';
@@ -43,6 +41,9 @@ class _SecretaryDashboardState extends State<SecretaryDashboard> {
   String _searchTerm = '';
   Appointment? _selectedAppointment;
   String _cancelReason = '';
+  int? _userClinicId;
+  int? clinicaId;
+  String _clinicName = 'Sua Clínica'; // Nome padrão da clínica
 
   // Constantes de Cor
   static const Color primaryColor = Color(0xFF0891B2);
@@ -60,6 +61,26 @@ class _SecretaryDashboardState extends State<SecretaryDashboard> {
         _filterAppointments();
       });
     });
+    _loadClinicaId();
+  }
+
+  // Carrega o ID da clínica a partir do token JWT e atualiza o estado.
+  Future<void> _loadClinicaId() async {
+    try {
+      final accessToken = await _storage.read(key: 'access_token');
+      if (accessToken == null) return;
+
+      final Map<String, dynamic> decoded = JwtDecoder.decode(accessToken);
+      if (!mounted) return;
+
+      setState(() {
+        // Alguns tokens podem usar 'clinica_id' ou 'clinicaId' dependendo do backend.
+        _userClinicId = decoded['clinica_id'] ?? decoded['clinicaId'];
+        clinicaId = _userClinicId;
+      });
+    } catch (_) {
+      // Falha ao obter/decodificar token: não bloqueia a UI, apenas ignora.
+    }
   }
 
   @override
@@ -96,25 +117,48 @@ class _SecretaryDashboardState extends State<SecretaryDashboard> {
         throw Exception('Token não encontrado. Faça o login novamente.');
       }
 
-      // Decodifica o token para pegar o nome do usuário
+      // Decodifica o token para pegar o nome do usuário e o clinic_id
       Map<String, dynamic> decodedToken = JwtDecoder.decode(accessToken);
+      final tokenClinicId =
+          decodedToken['clinica_id'] ?? decodedToken['clinicaId'];
 
-      // Busca os dados da API em paralelo
-      final results = await Future.wait([
+      // Busca os dados da API em paralelo (sem bloquear a busca do nome da clínica)
+      final resultsFuture = Future.wait([
         _apiService.getDashboardStats(accessToken),
         _apiService.getAppointments(accessToken),
         _apiService.getPatients(accessToken),
         _apiService.getDoctors(accessToken),
       ]);
 
+      // Se tivermos clinic_id, tenta buscar o nome real da clínica pela API
+      String? clinicNameFromApi;
+      if (tokenClinicId != null) {
+        try {
+          clinicNameFromApi = await _apiService.getClinicName(
+            int.parse(tokenClinicId.toString()),
+            accessToken,
+          );
+        } catch (_) {
+          clinicNameFromApi = null;
+        }
+      }
+
+      final results = await resultsFuture;
+
       if (!mounted) return;
       setState(() {
         _secretaryName = decodedToken['full_name'] ?? 'Secretária';
+        _userClinicId = tokenClinicId != null
+            ? int.tryParse(tokenClinicId.toString())
+            : null;
         _stats = results[0] as DashboardStats;
         _allAppointments = results[1] as List<Appointment>;
         _filteredAppointments = _allAppointments;
         _patients = results[2] as List<Patient>;
         _doctors = results[3] as List<Doctor>;
+        // usa o nome vindo da API como prioridade, depois token, depois fallback
+        _clinicName =
+            clinicNameFromApi ?? decodedToken['clinic_name'] ?? 'Sua Clínica';
       });
     } catch (e) {
       if (!mounted) return;
@@ -410,22 +454,35 @@ class _SecretaryDashboardState extends State<SecretaryDashboard> {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        const Row(
+        Row(
           children: [
-            Icon(Icons.local_hospital, size: 32, color: primaryColor),
-            SizedBox(width: 12),
+            const Icon(Icons.local_hospital, size: 32, color: primaryColor),
+            const SizedBox(width: 12),
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  'MedLink',
-                  style: TextStyle(
-                    fontSize: 24,
-                    fontWeight: FontWeight.bold,
-                    color: primaryColor,
-                  ),
+                Row(
+                  children: [
+                    const Text(
+                      'MedLink',
+                      style: TextStyle(
+                        fontSize: 24,
+                        fontWeight: FontWeight.bold,
+                        color: primaryColor,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      '- $_clinicName',
+                      style: TextStyle(
+                        fontSize: 20,
+                        color: Colors.grey[700],
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
                 ),
-                Text(
+                const Text(
                   'Painel da Secretária',
                   style: TextStyle(color: Colors.grey),
                 ),
@@ -966,6 +1023,20 @@ class _SecretaryDashboardState extends State<SecretaryDashboard> {
                             );
                             return;
                           }
+
+                          // 👇 VALIDAÇÃO DO ID DA CLÍNICA 👇
+                          if (_userClinicId == null) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text(
+                                  'Erro: ID da clínica não encontrado. Faça o login novamente.',
+                                ),
+                                backgroundColor: Colors.red,
+                              ),
+                            );
+                            return;
+                          }
+
                           setDialogState(() => isDialogLoading = true);
                           try {
                             final accessToken = await _storage.read(
@@ -981,8 +1052,9 @@ class _SecretaryDashboardState extends State<SecretaryDashboard> {
                               selectedTime!.hour,
                               selectedTime!.minute,
                             );
+
                             final newAppointment = Appointment(
-                              id: 0, // O ID é gerado pelo backend
+                              id: 0,
                               dateTime: appointmentDateTime,
                               status: 'PENDENTE',
                               valor:
@@ -992,7 +1064,10 @@ class _SecretaryDashboardState extends State<SecretaryDashboard> {
                               type: typeController.text,
                               patientId: selectedPatient!.id,
                               doctorId: selectedDoctor!.id,
-                              clinicId: 1, // TODO: Pegar o ID da clínica logada
+
+                              // 👇 CORREÇÃO FINAL AQUI 👇
+                              clinicId:
+                                  _userClinicId, // Usa o ID da secretária logada
                             );
 
                             final response = await _apiService
@@ -1009,7 +1084,7 @@ class _SecretaryDashboardState extends State<SecretaryDashboard> {
                                   backgroundColor: Colors.green,
                                 ),
                               );
-                              _fetchAppointments(); // Atualiza a lista
+                              _loadInitialData(); // Atualiza a lista
                             } else {
                               throw Exception(
                                 'Falha ao criar agendamento: ${response.body}',
@@ -1257,8 +1332,6 @@ class _SecretaryDashboardState extends State<SecretaryDashboard> {
 
   // Em _SecretaryDashboardState
 
-  // Em _SecretaryDashboardState
-
   // SUBSTITUA a função _editAppointment por esta
   // Em _SecretaryDashboardState
 
@@ -1412,10 +1485,6 @@ class _SecretaryDashboardState extends State<SecretaryDashboard> {
       },
     );
   }
-
-  // E não se esqueça de ajustar a chamada no _buildAppointmentCard
-  // para passar o objeto `appointment` inteiro:
-  // onPressed: () => _editAppointment(appointment),
 
   //_buildCancelDialog
   Widget _buildCancelDialog() {

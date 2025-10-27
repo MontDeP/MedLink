@@ -25,14 +25,34 @@ class ConsultaAPIView(APIView):
 
     def get_queryset(self):
         user = self.request.user
-        if user.user_type == 'MEDICO':
-            return Consulta.objects.filter(medico=user).order_by('data_hora')
-        elif user.user_type == 'SECRETARIA':
+        # Admin vê tudo
+        if getattr(user, 'is_staff', False) or getattr(user, 'is_superuser', False):
+            return Consulta.objects.all().order_by('data_hora')
+        
+        # Secretária: filtra APENAS pela clínica associada
+        if getattr(user, 'user_type', None) == 'SECRETARIA':
             try:
-                clinica = user.perfil_secretaria.clinica 
+                clinica = user.perfil_secretaria.clinica
                 return Consulta.objects.filter(clinica=clinica).order_by('data_hora')
             except AttributeError:
                 return Consulta.objects.none()
+        
+        # Médico: filtra por clínicas associadas
+        if getattr(user, 'user_type', None) == 'MEDICO':
+            medico = getattr(user, 'perfil_medico', None)
+            if medico and hasattr(medico, 'clinicas'):
+                clinics = medico.clinicas.all()
+                if clinics.exists():
+                    return Consulta.objects.filter(clinica__in=clinics).order_by('data_hora')
+            return Consulta.objects.filter(medico=user).order_by('data_hora')
+        
+        # Paciente: só suas consultas
+        if getattr(user, 'user_type', None) == 'PACIENTE':
+            paciente = getattr(user, 'perfil_paciente', None)
+            if paciente:
+                return Consulta.objects.filter(paciente=paciente).order_by('data_hora')
+        
+        # fallback: nada
         return Consulta.objects.none()
 
     def get(self, request, pk=None):

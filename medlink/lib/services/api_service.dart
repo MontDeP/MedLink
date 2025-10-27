@@ -503,6 +503,7 @@ class ApiService {
       body: jsonEncode(patientData),
     );
   }
+
   Future<Map<String, dynamic>> requestPasswordReset(String email) async {
     // Agora '$baseUrl' funciona porque está dentro da classe
     final url = Uri.parse('$baseUrl/api/users/request-password-reset/');
@@ -522,20 +523,34 @@ class ApiService {
         try {
           final responseBody = json.decode(utf8.decode(response.bodyBytes));
           // Assumindo que seu backend envia erros como {'error': '...'}
-          return {'success': false, 'message': responseBody['error'] ?? 'E-mail não encontrado ou inválido.'};
+          return {
+            'success': false,
+            'message':
+                responseBody['error'] ?? 'E-mail não encontrado ou inválido.',
+          };
         } catch (e) {
-          return {'success': false, 'message': 'Erro ao processar resposta do servidor. Status: ${response.statusCode}'};
+          return {
+            'success': false,
+            'message':
+                'Erro ao processar resposta do servidor. Status: ${response.statusCode}',
+          };
         }
       }
     } catch (e) {
-      
       debugPrint('Erro de conexão em requestPasswordReset: $e');
-      return {'success': false, 'message': 'Não foi possível conectar ao servidor. Verifique sua internet.'};
+      return {
+        'success': false,
+        'message':
+            'Não foi possível conectar ao servidor. Verifique sua internet.',
+      };
     }
   }
 
-  Future<Map<String, dynamic>> confirmPasswordReset(String uid, String token, String password) async {
-    
+  Future<Map<String, dynamic>> confirmPasswordReset(
+    String uid,
+    String token,
+    String password,
+  ) async {
     // Agora '$baseUrl' funciona porque está dentro da classe
     final url = Uri.parse('$baseUrl/api/users/reset-password-confirm/');
 
@@ -570,21 +585,29 @@ class ApiService {
           }
           return {'success': false, 'message': errorMessage};
         } catch (e) {
-          return {'success': false, 'message': 'Erro no servidor. Status: ${response.statusCode}'};
+          return {
+            'success': false,
+            'message': 'Erro no servidor. Status: ${response.statusCode}',
+          };
         }
       }
     } catch (e) {
       debugPrint('Erro de conexão em confirmPasswordReset: $e');
-      return {'success': false, 'message': 'Não foi possível conectar ao servidor.'};
+      return {
+        'success': false,
+        'message': 'Não foi possível conectar ao servidor.',
+      };
     }
   }
 
-  Future<Map<String, dynamic>> createPasswordConfirm(String uid, String token, String password) async {
+  Future<Map<String, dynamic>> createPasswordConfirm(
+    String uid,
+    String token,
+    String password,
+  ) async {
     final response = await http.post(
-      
-      
       Uri.parse('$baseUrl/api/users/create-password-confirm/'),
-      
+
       headers: <String, String>{
         'Content-Type': 'application/json; charset=UTF-8',
       },
@@ -599,7 +622,84 @@ class ApiService {
       return {'success': true, 'message': 'Senha definida com sucesso.'};
     } else {
       final errorData = jsonDecode(utf8.decode(response.bodyBytes));
-      return {'success': false, 'message': errorData['error'] ?? 'Link inválido ou expirado'};
+      return {
+        'success': false,
+        'message': errorData['error'] ?? 'Link inválido ou expirado',
+      };
     }
   }
-} 
+
+  Future<List<dynamic>> listarAgendamentosPorClinica(
+    String token,
+    int clinicaId,
+  ) async {
+    final url = Uri.parse('$baseUrl/agendamentos/?clinica=$clinicaId');
+    final resp = await http.get(
+      url,
+      headers: {
+        'Authorization': 'Bearer $token',
+        'Content-Type': 'application/json',
+      },
+    );
+    if (resp.statusCode == 200) {
+      return jsonDecode(resp.body) as List<dynamic>;
+    } else {
+      throw Exception('Erro ao listar agendamentos: ${resp.statusCode}');
+    }
+  }
+
+  Future<dynamic> criarAgendamento(
+    Map<String, dynamic> dados,
+    String token,
+    int clinicaId,
+  ) async {
+    final url = Uri.parse('$baseUrl/agendamentos/');
+    final body = Map<String, dynamic>.from(dados);
+    body['clinica'] = clinicaId;
+    final resp = await http.post(
+      url,
+      headers: {
+        'Authorization': 'Bearer $token',
+        'Content-Type': 'application/json',
+      },
+      body: jsonEncode(body),
+    );
+    if (resp.statusCode == 201 || resp.statusCode == 200) {
+      return jsonDecode(resp.body);
+    } else {
+      throw Exception(
+        'Erro ao criar agendamento: ${resp.statusCode} - ${resp.body}',
+      );
+    }
+  }
+
+  // --- NOVO MÉTODO: Buscar dados da clínica por ID e retornar o nome ---
+  Future<String?> getClinicName(int clinicaId, String accessToken) async {
+    final url = Uri.parse("$baseUrl/api/clinicas/$clinicaId/");
+    try {
+      final response = await http.get(
+        url,
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $accessToken',
+        },
+      );
+
+      if (response.statusCode == 200 && response.body.isNotEmpty) {
+        final Map<String, dynamic> data = json.decode(
+          utf8.decode(response.bodyBytes),
+        );
+        // Ajuste o campo conforme sua API ('nome' ou 'name')
+        return data['nome'] ?? data['name'] ?? null;
+      } else {
+        debugPrint(
+          'getClinicName: resposta inválida ${response.statusCode} ${response.body}',
+        );
+        return null;
+      }
+    } catch (e) {
+      debugPrint('Erro em getClinicName: $e');
+      return null;
+    }
+  }
+}

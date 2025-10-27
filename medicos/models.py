@@ -37,13 +37,11 @@ class Medico(models.Model):
         default=EspecialidadeChoices.CLINICA_GERAL
     )
 
-    # Relação com a clínica. Se a clínica for deletada, o campo fica nulo.
-    clinica = models.ForeignKey(
+    # Troque ForeignKey por ManyToManyField para multi-clínica:
+    clinicas = models.ManyToManyField(
         Clinica,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True, # Permite que um médico seja cadastrado sem clínica inicialmente
-        related_name='medicos'
+        related_name='medicos',
+        blank=True
     )
 
     # Campo para data de nascimento, opcional.
