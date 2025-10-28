@@ -10,6 +10,7 @@ import '../models/patient_model.dart';
 import '../models/doctor_model.dart';
 import '../models/paciente.dart';
 import '../models/consultas.dart' as consultas_model;
+import '../models/dashboard_data_model.dart';
 
 class ApiService {
   // ✅ Base URL unificada
@@ -51,7 +52,34 @@ class ApiService {
       return {'success': false, 'error': e.toString()};
     }
   }
+  Future<DashboardData> fetchDashboardData() async {
+    // A URL que criamos no Django
+    final url = Uri.parse("$baseUrl/api/pacientes/dashboard/");
 
+    // Usa o token estático que já é salvo no login
+    if (_accessToken == null) {
+      throw Exception('Token de acesso não encontrado. Faça o login novamente.');
+    }
+
+    final response = await http.get(
+      url,
+      headers: {
+        "Content-Type": "application/json",
+        // Usando "Bearer" como o resto dos seus métodos autenticados
+        "Authorization": "Bearer $_accessToken", 
+      },
+    );
+
+    if (response.statusCode == 200) {
+      // Decodifica a resposta e usa o 'factory' do nosso modelo
+      final Map<String, dynamic> data = json.decode(utf8.decode(response.bodyBytes));
+      return DashboardData.fromJson(data);
+    } else {
+      // Lança um erro se a API falhar
+      debugPrint('Falha no Dashboard: ${response.statusCode} | ${response.body}');
+      throw Exception('Falha ao carregar dados do dashboard');
+    }
+  }
   // ✅ Helper para extrair o tipo de usuário do token JWT
   String? _getUserTypeFromToken(String token) {
     try {

@@ -90,3 +90,29 @@ class AnotacaoConsultaSerializer(serializers.ModelSerializer):
         model = AnotacaoConsulta
         fields = ['consulta', 'conteudo', 'data_atualizacao']
         read_only_fields = ['consulta', 'data_atualizacao']
+
+class DashboardConsultaSerializer(serializers.ModelSerializer):
+    """
+    Serializer otimizado para o card de "Próxima Consulta" do dashboard do paciente.
+    Retorna apenas os 4 campos necessários para o front-end.
+    """
+
+    # O front-end espera 'medico', 'especialidade', 'data', 'local'
+
+    # Pega o nome completo do User (médico)
+    medico = serializers.CharField(source='medico.get_full_name') 
+    
+    # Acessa User -> perfil_medico -> get_especialidade_display()
+    #
+    especialidade = serializers.CharField(source='medico.perfil_medico.get_especialidade_display')
+
+    # Renomeia 'data_hora' para 'data'
+    data = serializers.DateTimeField(source='data_hora') 
+
+    # Pega o nome da clínica
+    local = serializers.CharField(source='clinica.nome_fantasia') # Assumindo que o nome do local é 'nome_fantasia' no model Clinica
+
+    class Meta:
+        model = Consulta
+        # Estes são os campos que o JSON final terá
+        fields = ['medico', 'especialidade', 'data', 'local']
