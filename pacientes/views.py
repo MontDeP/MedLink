@@ -10,6 +10,8 @@ from agendamentos.models import Consulta
 from users.permissions import IsMedicoOrSecretaria
 from .serializers import PacienteCreateSerializer
 from agendamentos.serializers import ConsultaSerializer
+from agendamentos.serializers import ConsultaSerializer, DashboardConsultaSerializer
+from users.models import User
 
 # View para CRIAR pacientes (sem alterações)
 class PacienteCreateView(generics.CreateAPIView):
@@ -73,3 +75,48 @@ class HistoricoPacienteAPIView(APIView):
 
         serializer = ConsultaSerializer(historico_consultas, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
+    
+class PacienteDashboardView(APIView):
+    """
+    View para carregar os dados dinâmicos da home page (dashboard) do paciente.
+    """
+    permission_classes = [IsAuthenticated] # Exige autenticação
+
+    def get(self, request):
+        usuario_logado = request.user
+
+        # 1. Validação: Apenas usuários do tipo PACIENTE podem acessar
+        if usuario_logado.user_type != User.UserType.PACIENTE: #
+            return Response({"erro": "Acesso negado. Esta view é para pacientes."}, status=403)
+        
+        try:
+            # 2. Busca o perfil Paciente (ligado ao User pela PK)
+            #
+            paciente = Paciente.objects.get(user=usuario_logado)
+        except Paciente.DoesNotExist:
+            return Response({"erro": "Perfil de paciente não encontrado."}, status=404)
+
+        # 3. Busca o nome do paciente (que está no model User)
+        nome_paciente = usuario_logado.get_full_name() #
+
+        # 4. Busca a próxima consulta
+        proxima_consulta = Consulta.objects.filter(
+            paciente=paciente,
+            data_hora__gte=timezone.now() # Filtra por datas futuras
+        ).select_related(
+            'medico__perfil_medico', 'clinica' # Otimiza a query
+        ).order_by('data_hora').first()
+
+        # 5. Serializa os dados da consulta (se houver)
+        dados_consulta = None
+        if proxima_consulta:
+            # Usa o NOVO serializer otimizado
+            dados_consulta = DashboardConsultaSerializer(proxima_consulta).data
+
+        # 6. Monta a resposta final no formato que o Flutter espera
+        response_data = {
+            "nomePaciente": nome_paciente,
+            "proximaConsulta": dados_consulta # Será null se não houver consulta
+        }
+        
+        return Response(response_data)
