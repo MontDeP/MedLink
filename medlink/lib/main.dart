@@ -1,8 +1,10 @@
-// medlink/lib/main.dart
+// medlink/lib/main.dart (CORRIGIDO)
 
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:intl/date_symbol_data_local.dart';
+// IMPORTAÇÃO NECESSÁRIA PARA LOCALIZAÇÃO:
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:medlink/views/pages/home_page.dart';
 import 'package:medlink/views/pages/main_navigation.dart';
 import 'package:provider/provider.dart';
@@ -11,7 +13,7 @@ import 'package:flutter_web_plugins/url_strategy.dart';
 // Views
 import 'views/pages/login.dart';
 import 'views/pages/register.dart';
-import 'views/pages/dashboard_page.dart';
+import 'views/pages/dashboard_page.dart'; // Presumo que seja SecretaryDashboard
 import 'views/pages/admin.dart';
 import 'views/pages/admin_edit_user_page.dart';
 import 'views/pages/medico_dashboard_page.dart';
@@ -46,6 +48,20 @@ class MyApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       title: 'MedLink',
       theme: ThemeData(primarySwatch: Colors.blue),
+
+      // Adiciona os delegados de localização.
+      localizationsDelegates: const [
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+      ],
+      // Define os idiomas suportados.
+      supportedLocales: const [
+        Locale('pt', 'BR'), // Português (Brasil)
+        // Locale('en', 'US'), // Você pode adicionar inglês se quiser
+      ],
+      // Define o idioma padrão do app
+      locale: const Locale('pt', 'BR'),
       initialRoute: '/',
 
       // Usando onGenerateRoute para ter controle sobre rotas dinâmicas
@@ -105,23 +121,30 @@ class MyApp extends StatelessWidget {
             page: () => const MainNavigation(),
           );
         }
-        
+
         // Rota para /admin/edit-user (que você já tinha)
         if (settings.name == '/admin/edit-user') {
-          final userId = settings.arguments as String;
-          return GetPageRoute(
-            settings: settings,
-            page: () => AdminEditUserPage(userId: userId),
-          );
+          // Garante que o argumento é uma String antes de prosseguir
+          if (settings.arguments is String) {
+            final userId = settings.arguments as String;
+            return GetPageRoute(
+              settings: settings,
+              page: () => AdminEditUserPage(userId: userId),
+            );
+          } else {
+             // Se o argumento não for String, vai para Login para evitar erro
+             print("Erro: Argumento para /admin/edit-user não é String. Redirecionando para Login.");
+             return GetPageRoute(settings: settings, page: () => const LoginPage());
+          }
         }
-      
+
         // Rota para /reset-password?uid=...&token=...
         if (settings.name != null && settings.name!.startsWith('/reset-password')) {
           final uri = Uri.parse(settings.name!);
 
           // Verifica se o caminho base é /reset-password
           if (uri.path == '/reset-password') {
-            
+
             // Pega os parâmetros da query (o que vem depois do '?')
             final uid = uri.queryParameters['uid'];
             final token = uri.queryParameters['token'];
@@ -135,14 +158,14 @@ class MyApp extends StatelessWidget {
             }
           }
         }
-        
+
         // Rota para /criar-senha?uid=...&token=...
         if (settings.name != null && settings.name!.startsWith('/criar-senha')) {
           final uri = Uri.parse(settings.name!);
 
           // Verifica se o caminho base é /criar-senha
           if (uri.path == '/criar-senha') {
-            
+
             // Pega os parâmetros da query (o que vem depois do '?')
             final uid = uri.queryParameters['uid'];
             final token = uri.queryParameters['token'];
@@ -159,6 +182,7 @@ class MyApp extends StatelessWidget {
         }
 
         // Se nenhuma rota bater, retorna para a página de Login
+        print("Aviso: Rota '${settings.name}' não encontrada. Redirecionando para Login.");
         return GetPageRoute(
           settings: settings,
           page: () => const LoginPage(),
