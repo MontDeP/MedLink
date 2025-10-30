@@ -8,7 +8,9 @@ from django.utils import timezone
 from .models import Paciente
 from agendamentos.models import Consulta
 from users.permissions import IsMedicoOrSecretaria
-from .serializers import PacienteCreateSerializer
+# --- MINHA ADIÇÃO DE IMPORT ---
+from .serializers import PacienteCreateSerializer, PacienteProfileSerializer
+# --- FIM DA MINHA ADIÇÃO ---
 from agendamentos.serializers import ConsultaSerializer
 from agendamentos.serializers import ConsultaSerializer, DashboardConsultaSerializer
 from users.models import User
@@ -127,3 +129,15 @@ class PacienteDashboardView(APIView):
         }
         
         return Response(response_data)
+
+class PacienteProfileView(generics.RetrieveUpdateAPIView):
+    """
+    API para o paciente logado (Retrieve) ver e (Update) atualizar 
+    seu próprio perfil de paciente.
+    """
+    serializer_class = PacienteProfileSerializer
+    permission_classes = [IsAuthenticated] # Só usuários logados
+
+    def get_object(self):
+        paciente, created = Paciente.objects.get_or_create(user=self.request.user)
+        return paciente
