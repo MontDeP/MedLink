@@ -126,13 +126,13 @@ class UserViewTests(APITestCase):
         
         response = self.client.post(url, data, format='json')
         
-        # A sua view retorna 404 neste caso
+        # A view retorna 404 neste caso
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
     def test_password_reset_confirm_sucesso(self):
         """
         Testa a PasswordResetConfirmView para definir uma nova senha.
-        Usa o nome da URL que você definiu: 'reset-password-confirm'
+        Usa o nome da URL: 'reset-password-confirm'
         """
         # 1. Gerar o 'uid' e 'token'
         user = self.user
