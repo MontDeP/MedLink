@@ -8,33 +8,31 @@ class MyTokenObtainPairSerializer(TokenObtainPairSerializer):
     def get_token(cls, user):
         token = super().get_token(user)
 
-        # Adiciona os dados customizados que já existiam
         token['user_type'] = user.user_type
         token['full_name'] = user.get_full_name()
         token['email'] = user.email
 
-        # --- LÓGICA CORRIGIDA PARA CLÍNICA ---
         try:
             if user.user_type == 'SECRETARIA':
-                # Secretária: uma clínica
-                clinica_id = getattr(user.perfil_secretaria.clinica, 'id', None)
-                token['clinica_id'] = clinica_id
-                token['clinic_name'] = user.perfil_secretaria.clinica.nome  # Add clinic name
+                # Acessa o perfil e a clínica de forma segura
+                if hasattr(user, 'perfil_secretaria') and user.perfil_secretaria.clinica:
+                    clinica = user.perfil_secretaria.clinica
+                    token['clinica_id'] = clinica.id
+                    token['clinic_name'] = clinica.nome_fantasia  # Use nome_fantasia instead of nome
+                else:
+                    print(f"AVISO: Secretária {user.get_full_name()} sem clínica associada!")
+                    token['clinica_id'] = None
+                    token['clinic_name'] = "Clínica não associada"
             elif user.user_type == 'MEDICO':
                 # Médico: pode ter várias clínicas
-                clinicas = getattr(user.perfil_medico, 'clinicas', None)
-                if clinicas:
-                    token['clinica_ids'] = [c.id for c in clinicas.all()]
-                    # Para compatibilidade, também envia o primeiro clinica_id
-                    token['clinica_id'] = token['clinica_ids'][0] if token['clinica_ids'] else None
-                else:
-                    token['clinica_ids'] = []
-                    token['clinica_id'] = None
-            else:
-                token['clinica_id'] = None
-        except Exception:
+                clinicas = user.perfil_medico.clinicas.all()
+                if clinicas.exists():
+                    token['clinica_ids'] = [c.id for c in clinicas]
+                    token['clinica_id'] = clinicas[0].id
+                    token['clinic_name'] = clinicas[0].nome
+        except Exception as e:
+            print(f"Erro ao buscar dados da clínica: {e}")
             token['clinica_id'] = None
-            token['clinica_ids'] = []
+            token['clinic_name'] = 'Clínica não associada'
 
-        # --- FIM DA LÓGICA CORRIGIDA ---
         return token

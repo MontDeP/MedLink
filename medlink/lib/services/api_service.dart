@@ -702,4 +702,56 @@ class ApiService {
       return null;
     }
   }
+
+  // --- NOVO: Buscar pacientes filtrados por clínica ---
+  Future<List<Patient>> getPatientsByClinic(
+    int clinicaId,
+    String accessToken,
+  ) async {
+    final url = Uri.parse("$baseUrl/api/pacientes/?clinica=$clinicaId");
+    final response = await http.get(
+      url,
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $accessToken',
+      },
+    );
+    if (response.statusCode == 200) {
+      final List<dynamic> jsonList = json.decode(
+        utf8.decode(response.bodyBytes),
+      );
+      return jsonList.map((json) => Patient.fromJson(json)).toList();
+    } else {
+      debugPrint(
+        'getPatientsByClinic failed: ${response.statusCode} ${response.body}',
+      );
+      throw Exception('Falha ao carregar pacientes da clínica.');
+    }
+  }
+
+  // --- NOVO: Buscar médicos filtrados por clínica ---
+  Future<List<Doctor>> getDoctorsByClinic(
+    int clinicaId,
+    String accessToken,
+  ) async {
+    final url = Uri.parse("$baseUrl/api/medicos/?clinica=$clinicaId");
+    final response = await http.get(
+      url,
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $accessToken',
+      },
+    );
+    if (response.statusCode == 200) {
+      final List<dynamic> jsonList = json.decode(
+        utf8.decode(response.bodyBytes),
+      );
+      return jsonList.map((json) => Doctor.fromJson(json)).toList();
+    } else {
+      debugPrint(
+        'getDoctorsByClinic failed: ${response.statusCode} ${response.body}',
+      );
+      throw Exception('Falha ao carregar médicos da clínica.');
+    }
+  }
 }

@@ -117,10 +117,16 @@ class _SecretaryDashboardState extends State<SecretaryDashboard> {
         throw Exception('Token não encontrado. Faça o login novamente.');
       }
 
-      // Decodifica o token para pegar o nome do usuário e o clinic_id
       Map<String, dynamic> decodedToken = JwtDecoder.decode(accessToken);
-      final tokenClinicId =
-          decodedToken['clinica_id'] ?? decodedToken['clinicaId'];
+
+      // Debug: imprima o token decodificado para verificar os campos
+      print("Token decodificado: $decodedToken");
+
+      // Tenta obter o nome da clínica de várias maneiras possíveis
+      String? clinicName =
+          decodedToken['clinic_name'] ??
+          decodedToken['clinica_nome'] ??
+          decodedToken['nome_clinica'];
 
       // Busca os dados da API em paralelo (sem bloquear a busca do nome da clínica)
       final resultsFuture = Future.wait([
@@ -132,10 +138,10 @@ class _SecretaryDashboardState extends State<SecretaryDashboard> {
 
       // Se tivermos clinic_id, tenta buscar o nome real da clínica pela API
       String? clinicNameFromApi;
-      if (tokenClinicId != null) {
+      if (_userClinicId != null) {
         try {
           clinicNameFromApi = await _apiService.getClinicName(
-            int.parse(tokenClinicId.toString()),
+            _userClinicId!,
             accessToken,
           );
         } catch (_) {
@@ -148,17 +154,16 @@ class _SecretaryDashboardState extends State<SecretaryDashboard> {
       if (!mounted) return;
       setState(() {
         _secretaryName = decodedToken['full_name'] ?? 'Secretária';
-        _userClinicId = tokenClinicId != null
-            ? int.tryParse(tokenClinicId.toString())
+        _userClinicId = decodedToken['clinica_id'] != null
+            ? int.tryParse(decodedToken['clinica_id'].toString())
             : null;
         _stats = results[0] as DashboardStats;
         _allAppointments = results[1] as List<Appointment>;
         _filteredAppointments = _allAppointments;
         _patients = results[2] as List<Patient>;
         _doctors = results[3] as List<Doctor>;
-        // usa o nome vindo da API como prioridade, depois token, depois fallback
-        _clinicName =
-            clinicNameFromApi ?? decodedToken['clinic_name'] ?? 'Sua Clínica';
+        // Usa o nome da clínica do token se disponível
+        _clinicName = clinicName ?? 'Clínica não associada';
       });
     } catch (e) {
       if (!mounted) return;
@@ -472,12 +477,22 @@ class _SecretaryDashboardState extends State<SecretaryDashboard> {
                       ),
                     ),
                     const SizedBox(width: 8),
-                    Text(
-                      '- $_clinicName',
-                      style: TextStyle(
-                        fontSize: 20,
-                        color: Colors.grey[700],
-                        fontWeight: FontWeight.w500,
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 4,
+                      ),
+                      decoration: BoxDecoration(
+                        color: accentColor.withOpacity(0.3),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Text(
+                        _clinicName,
+                        style: TextStyle(
+                          fontSize: 16,
+                          color: Colors.grey[800],
+                          fontWeight: FontWeight.w500,
+                        ),
                       ),
                     ),
                   ],
