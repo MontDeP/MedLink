@@ -100,10 +100,22 @@ class SolicitarReagendamentoAPIView(UpdateAPIView):
 
 class MedicoListView(ListAPIView):
     """
-    View para listar todos os médicos ativos.
-    Acessível apenas por usuários autenticados.
+    View para listar médicos, filtrando por clínica quando o usuário é uma secretária.
     """
-    # Filtra para retornar apenas médicos com usuário ativo
-    queryset = Medico.objects.select_related('user').filter(user__is_active=True)
     serializer_class = MedicoSerializer
     permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        user = self.request.user
+        
+        # Secretária: vê apenas médicos da sua clínica
+        if user.user_type == 'SECRETARIA' and hasattr(user, 'perfil_secretaria'):
+            clinica = user.perfil_secretaria.clinica
+            return Medico.objects.filter(clinicas=clinica).distinct()
+        
+        # Admin: vê todos
+        if user.is_staff or user.is_superuser:
+            return Medico.objects.all()
+            
+        # Outros usuários: veem nada
+        return Medico.objects.none()

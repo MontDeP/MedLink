@@ -14,25 +14,38 @@ class MyTokenObtainPairSerializer(TokenObtainPairSerializer):
 
         try:
             if user.user_type == 'SECRETARIA':
-                # Acessa o perfil e a clínica de forma segura
                 if hasattr(user, 'perfil_secretaria') and user.perfil_secretaria.clinica:
                     clinica = user.perfil_secretaria.clinica
                     token['clinica_id'] = clinica.id
-                    token['clinic_name'] = clinica.nome_fantasia  # Use nome_fantasia instead of nome
+                    token['clinic_name'] = getattr(clinica, 'nome_fantasia', None) or ''
                 else:
-                    print(f"AVISO: Secretária {user.get_full_name()} sem clínica associada!")
                     token['clinica_id'] = None
                     token['clinic_name'] = "Clínica não associada"
             elif user.user_type == 'MEDICO':
-                # Médico: pode ter várias clínicas
-                clinicas = user.perfil_medico.clinicas.all()
-                if clinicas.exists():
+                clinicas = user.perfil_medico.clinicas.all() if hasattr(user, 'perfil_medico') else []
+                if clinicas:
                     token['clinica_ids'] = [c.id for c in clinicas]
                     token['clinica_id'] = clinicas[0].id
-                    token['clinic_name'] = clinicas[0].nome
+                    token['clinic_name'] = getattr(clinicas[0], 'nome_fantasia', None) or ''
+                else:
+                    token['clinica_ids'] = []
+                    token['clinica_id'] = None
+                    token['clinic_name'] = "Clínica não associada"
+            elif user.user_type == 'PACIENTE':
+                # Paciente: envia a clínica vinculada ao perfil do paciente
+                if hasattr(user, 'perfil_paciente') and user.perfil_paciente.clinica:
+                    clinica = user.perfil_paciente.clinica
+                    token['clinica_id'] = clinica.id
+                    token['clinic_name'] = getattr(clinica, 'nome_fantasia', None) or ''
+                else:
+                    token['clinica_id'] = None
+                    token['clinic_name'] = "Clínica não associada"
+            else:
+                token['clinica_id'] = None
+                token['clinic_name'] = "Clínica não associada"
         except Exception as e:
-            print(f"Erro ao buscar dados da clínica: {e}")
+            print(f"Erro ao processar dados da clínica para o token: {e}")
             token['clinica_id'] = None
-            token['clinic_name'] = 'Clínica não associada'
+            token['clinic_name'] = "Erro ao carregar clínica"
 
         return token

@@ -10,6 +10,7 @@ from agendamentos.models import Consulta
 from users.permissions import IsMedicoOrSecretaria
 from .serializers import PacienteCreateSerializer
 from agendamentos.serializers import ConsultaSerializer
+from django.db.models import Q
 
 # View para CRIAR pacientes (sem alterações)
 class PacienteCreateView(generics.CreateAPIView):
@@ -17,11 +18,58 @@ class PacienteCreateView(generics.CreateAPIView):
     serializer_class = PacienteCreateSerializer
     permission_classes = [AllowAny]
 
+    def perform_create(self, serializer):
+        # Cria o paciente normalmente
+        paciente = serializer.save()
+        # Se for secretária ou médico autenticado, seta a clínica automaticamente
+        user = getattr(self.request, 'user', None)
+        if user and user.is_authenticated:
+            # Secretária: usa a clínica da secretária
+            if getattr(user, 'user_type', None) == 'SECRETARIA' and hasattr(user, 'perfil_secretaria'):
+                clinica = getattr(user.perfil_secretaria, 'clinica', None)
+                if clinica:
+                    paciente.clinica = clinica
+                    paciente.save()
+            # Médico: usa uma das clínicas do médico (primeira da lista)
+            elif getattr(user, 'user_type', None) == 'MEDICO' and hasattr(user, 'perfil_medico'):
+                clinicas = getattr(user.perfil_medico, 'clinicas', None)
+                if clinicas:
+                    primeira_clinica = clinicas.first()
+                    if primeira_clinica:
+                        paciente.clinica = primeira_clinica
+                        paciente.save()
+
 # View para LISTAR todos os pacientes (sem alterações)
 class PacienteListView(generics.ListAPIView):
-    queryset = Paciente.objects.select_related('user').all()
     serializer_class = PacienteCreateSerializer
     permission_classes = [IsAuthenticated]
+    
+    def get_queryset(self):
+        user = self.request.user
+
+        # Secretária: vê pacientes da sua clínica + pacientes que já tiveram consultas
+        if user.user_type == 'SECRETARIA' and hasattr(user, 'perfil_secretaria'):
+            clinica = user.perfil_secretaria.clinica
+            return Paciente.objects.filter(
+                Q(clinica=clinica) |  # Pacientes registrados na clínica
+                Q(consultas_agendadas__clinica=clinica)  # Pacientes com consultas
+            ).distinct()
+        
+        # Médico: vê seus pacientes + pacientes das clínicas onde atende
+        elif user.user_type == 'MEDICO' and hasattr(user, 'perfil_medico'):
+            clinicas = user.perfil_medico.clinicas.all()
+            return Paciente.objects.filter(
+                Q(clinica__in=clinicas) |  # Pacientes das clínicas onde atende
+                Q(consultas_agendadas__clinica__in=clinicas) |  # Pacientes com consultas nas clínicas
+                Q(consultas_agendadas__medico=user)  # Pacientes atendidos pelo médico
+            ).distinct()
+        
+        # Admin: vê todos
+        elif user.is_staff or user.is_superuser:
+            return Paciente.objects.all()
+        
+        # Outros: veem nada
+        return Paciente.objects.none()
 
 # View para os PACIENTES DO DIA (sem alterações)
 class PacientesDoDiaAPIView(APIView):

@@ -2,6 +2,7 @@
 from django.db import models
 from users.models import User
 from django.conf import settings
+from clinicas.models import Clinica
 
 # Modelo Paciente que se LIGA ao User através de uma relação One-to-One
 class Paciente(models.Model):
@@ -17,6 +18,13 @@ class Paciente(models.Model):
     telefone = models.CharField(max_length=15, blank=True)
     data_cadastro = models.DateTimeField(auto_now_add=True)
     dados_clinicos = models.TextField(blank=True)
+    clinica = models.ForeignKey(
+        Clinica,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='pacientes'
+    )
 
     def __str__(self):
         # Acessa os dados do modelo User relacionado
