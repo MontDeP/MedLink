@@ -152,6 +152,16 @@ class _SecretaryDashboardState extends State<SecretaryDashboard> {
       final results = await resultsFuture;
 
       if (!mounted) return;
+
+      // Debug: imprima os médicos carregados
+      final doctors = results[3] as List<Doctor>;
+      print('=== MÉDICOS CARREGADOS ===');
+      print('Total: ${doctors.length}');
+      for (var doc in doctors) {
+        print('- ${doc.fullName} (ID: ${doc.id})');
+      }
+      print('========================');
+
       setState(() {
         _secretaryName = decodedToken['full_name'] ?? 'Secretária';
         _userClinicId = decodedToken['clinica_id'] != null
@@ -161,11 +171,11 @@ class _SecretaryDashboardState extends State<SecretaryDashboard> {
         _allAppointments = results[1] as List<Appointment>;
         _filteredAppointments = _allAppointments;
         _patients = results[2] as List<Patient>;
-        _doctors = results[3] as List<Doctor>;
-        // Usa o nome da clínica do token se disponível
+        _doctors = doctors;
         _clinicName = clinicName ?? 'Clínica não associada';
       });
     } catch (e) {
+      print('ERRO ao carregar dados: $e');
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(

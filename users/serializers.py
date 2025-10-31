@@ -17,26 +17,26 @@ class MyTokenObtainPairSerializer(TokenObtainPairSerializer):
                 if hasattr(user, 'perfil_secretaria') and user.perfil_secretaria.clinica:
                     clinica = user.perfil_secretaria.clinica
                     token['clinica_id'] = clinica.id
-                    token['clinic_name'] = getattr(clinica, 'nome_fantasia', None) or ''
+                    token['clinic_name'] = getattr(clinica, 'nome_fantasia', '') or ''
                 else:
                     token['clinica_id'] = None
                     token['clinic_name'] = "Clínica não associada"
             elif user.user_type == 'MEDICO':
-                clinicas = user.perfil_medico.clinicas.all() if hasattr(user, 'perfil_medico') else []
-                if clinicas:
-                    token['clinica_ids'] = [c.id for c in clinicas]
-                    token['clinica_id'] = clinicas[0].id
-                    token['clinic_name'] = getattr(clinicas[0], 'nome_fantasia', None) or ''
-                else:
-                    token['clinica_ids'] = []
-                    token['clinica_id'] = None
-                    token['clinic_name'] = "Clínica não associada"
+                if hasattr(user, 'perfil_medico'):
+                    clinicas = user.perfil_medico.clinicas.all()
+                    if clinicas:
+                        token['clinica_ids'] = [c.id for c in clinicas]
+                        token['clinica_id'] = clinicas[0].id
+                        token['clinic_name'] = getattr(clinicas[0], 'nome_fantasia', '') or ''
+                    else:
+                        token['clinica_ids'] = []
+                        token['clinica_id'] = None
+                        token['clinic_name'] = "Clínica não associada"
             elif user.user_type == 'PACIENTE':
-                # Paciente: envia a clínica vinculada ao perfil do paciente
                 if hasattr(user, 'perfil_paciente') and user.perfil_paciente.clinica:
                     clinica = user.perfil_paciente.clinica
                     token['clinica_id'] = clinica.id
-                    token['clinic_name'] = getattr(clinica, 'nome_fantasia', None) or ''
+                    token['clinic_name'] = getattr(clinica, 'nome_fantasia', '') or ''
                 else:
                     token['clinica_id'] = None
                     token['clinic_name'] = "Clínica não associada"

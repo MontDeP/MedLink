@@ -408,13 +408,54 @@ class ApiService {
     String accessToken,
   ) async {
     final url = Uri.parse("$baseUrl/api/admin/users/");
+
+    // Normaliza o payload para compatibilidade com o backend
+    final body = Map<String, dynamic>.from(userData);
+    final rawType = (body['user_type'] ?? body['tipo'] ?? '').toString();
+    final userType = rawType.toUpperCase();
+
+    // Detecta clinicId nas várias chaves
+    dynamic clinicIdRaw =
+        body['clinica_id'] ??
+        body['clinic_id'] ??
+        body['clinicaId'] ??
+        body['clinica'];
+
+    // Fallback: usa clinica do token se não vier no body
+    if (clinicIdRaw == null) {
+      final payload = _decodeJwtPayload(accessToken);
+      final tokenClinicId = payload?['clinica_id'] ?? payload?['clinicaId'];
+      if (tokenClinicId != null) clinicIdRaw = tokenClinicId;
+    }
+
+    if (clinicIdRaw != null) {
+      final clinicIdParsed =
+          int.tryParse(clinicIdRaw.toString()) ?? clinicIdRaw;
+
+      if (userType == 'MEDICO') {
+        // Medico usa M2M "clinicas"
+        body['clinicas'] = [clinicIdParsed];
+        body.remove('clinica'); // evita conflito
+      } else if (userType == 'SECRETARIA' ||
+          userType == 'PACIENTE' ||
+          userType == 'ADMIN') {
+        // Demais perfis usam FK "clinica"
+        body['clinica'] = clinicIdParsed;
+        body.remove('clinicas'); // evita conflito
+      }
+      // Remove aliases para evitar kwargs inesperados no backend
+      body.remove('clinica_id');
+      body.remove('clinic_id');
+      body.remove('clinicaId');
+    }
+
     return await http.post(
       url,
       headers: {
         'Content-Type': 'application/json',
         'Authorization': 'Bearer $accessToken',
       },
-      body: jsonEncode(userData),
+      body: jsonEncode(body),
     );
   }
 
@@ -438,13 +479,48 @@ class ApiService {
     String accessToken,
   ) async {
     final url = Uri.parse("$baseUrl/admin/users/$userId/");
+
+    // --- Normalização também no PATCH (+ fallback pelo token) ---
+    final body = Map<String, dynamic>.from(data);
+    final rawType = (body['user_type'] ?? body['tipo'] ?? '').toString();
+    final userType = rawType.toUpperCase();
+
+    dynamic clinicIdRaw =
+        body['clinica_id'] ??
+        body['clinic_id'] ??
+        body['clinicaId'] ??
+        body['clinica'];
+
+    if (clinicIdRaw == null) {
+      final payload = _decodeJwtPayload(accessToken);
+      final tokenClinicId = payload?['clinica_id'] ?? payload?['clinicaId'];
+      if (tokenClinicId != null) clinicIdRaw = tokenClinicId;
+    }
+
+    if (clinicIdRaw != null) {
+      final clinicIdParsed =
+          int.tryParse(clinicIdRaw.toString()) ?? clinicIdRaw;
+
+      if (userType == 'MEDICO') {
+        body['clinicas'] = [clinicIdParsed];
+        body.remove('clinica');
+      } else {
+        body['clinica'] = clinicIdParsed;
+        body.remove('clinicas');
+      }
+      body.remove('clinica_id');
+      body.remove('clinic_id');
+      body.remove('clinicaId');
+    }
+    // --- fim normalização ---
+
     return await http.patch(
       url,
       headers: {
         'Content-Type': 'application/json',
         'Authorization': 'Bearer $accessToken',
       },
-      body: jsonEncode(data),
+      body: jsonEncode(body),
     );
   }
 
@@ -752,6 +828,19 @@ class ApiService {
         'getDoctorsByClinic failed: ${response.statusCode} ${response.body}',
       );
       throw Exception('Falha ao carregar médicos da clínica.');
+    }
+  }
+
+  // Helper: decodifica o payload do JWT
+  Map<String, dynamic>? _decodeJwtPayload(String token) {
+    try {
+      final parts = token.split('.');
+      if (parts.length != 3) return null;
+      final normalized = base64Url.normalize(parts[1]);
+      final decoded = utf8.decode(base64Url.decode(normalized));
+      return json.decode(decoded) as Map<String, dynamic>;
+    } catch (_) {
+      return null;
     }
   }
 }
