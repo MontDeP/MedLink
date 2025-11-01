@@ -70,23 +70,37 @@ class ConsultaAPIView(APIView):
         if serializer.is_valid(raise_exception=True):
             data_hora = serializer.validated_data['data_hora']
             medico = serializer.validated_data['medico']
-            paciente = serializer.validated_data['paciente']  # <-- 1) Obtém o paciente
+            paciente = serializer.validated_data['paciente']
 
-            # 2) Verificação de conflito do médico (já existia)
-            if Consulta.objects.filter(medico=medico, data_hora=data_hora).exists():
+            # --- JANELA MÍNIMA DE 30 MINUTOS ---
+            janela_inicio = data_hora - timedelta(minutes=30)
+            janela_fim = data_hora + timedelta(minutes=30)
+
+            # Conflito por médico (qualquer consulta no intervalo)
+            conflito_medico = Consulta.objects.filter(
+                medico=medico,
+                data_hora__gte=janela_inicio,
+                data_hora__lt=janela_fim,
+            ).exists()
+            if conflito_medico:
                 return Response(
-                    {"error": "Médico já tem uma consulta agendada para este horário."},
+                    {"error": "O médico já possui consulta em uma janela de 30 minutos neste horário."},
                     status=status.HTTP_400_BAD_REQUEST
                 )
 
-            # 3) NOVA verificação: conflito do paciente
-            if Consulta.objects.filter(paciente=paciente, data_hora=data_hora).exists():
+            # Conflito por paciente (qualquer consulta no intervalo)
+            conflito_paciente = Consulta.objects.filter(
+                paciente=paciente,
+                data_hora__gte=janela_inicio,
+                data_hora__lt=janela_fim,
+            ).exists()
+            if conflito_paciente:
                 return Response(
-                    {"error": "Paciente já tem uma consulta agendada para este horário."},
+                    {"error": "O paciente já possui consulta em uma janela de 30 minutos neste horário."},
                     status=status.HTTP_400_BAD_REQUEST
                 )
 
-            # ...existing code...
+            # ...existing code (criar consulta, pagamento e log)...
             try:
                 with transaction.atomic():
                     consulta = serializer.save()
@@ -101,40 +115,53 @@ class ConsultaAPIView(APIView):
                         pessoa=self.request.user
                     )
             except Exception as e:
-                return Response(
-                    {"error": str(e)},
-                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
-                )
+                return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
             return Response(serializer.data, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
     def put(self, request, pk=None):
         if pk is None:
-            return Response(
-                {"error": "A chave primária (pk) é necessária para esta operação."},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+            return Response({"error": "A chave primária (pk) é necessária para esta operação."},
+                            status=status.HTTP_400_BAD_REQUEST)
 
         consulta = get_object_or_404(self.get_queryset(), pk=pk)
         serializer = ConsultaSerializer(consulta, data=request.data, partial=True)
 
         if serializer.is_valid(raise_exception=True):
             data_hora_nova = serializer.validated_data.get('data_hora', consulta.data_hora)
-            medico = consulta.medico
+            medico = serializer.validated_data.get('medico', consulta.medico)
+            paciente = serializer.validated_data.get('paciente', consulta.paciente)
 
-            if 'data_hora' in serializer.validated_data:
-                conflitos = Consulta.objects.filter(
-                    medico=medico,
-                    data_hora=data_hora_nova
-                ).exclude(pk=pk)
+            # --- JANELA MÍNIMA DE 30 MINUTOS PARA REMARCAÇÃO ---
+            janela_inicio = data_hora_nova - timedelta(minutes=30)
+            janela_fim = data_hora_nova + timedelta(minutes=30)
 
-                if conflitos.exists():
-                    return Response(
-                        {"error": "Médico já tem outra consulta agendada para este novo horário."},
-                        status=status.HTTP_400_BAD_REQUEST
-                    )
+            # Conflito por médico (exclui a própria consulta)
+            conflito_medico = Consulta.objects.filter(
+                medico=medico,
+                data_hora__gte=janela_inicio,
+                data_hora__lt=janela_fim,
+            ).exclude(pk=pk).exists()
+            if conflito_medico:
+                return Response(
+                    {"error": "O médico já possui consulta em uma janela de 30 minutos neste novo horário."},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
 
+            # Conflito por paciente (exclui a própria consulta)
+            conflito_paciente = Consulta.objects.filter(
+                paciente=paciente,
+                data_hora__gte=janela_inicio,
+                data_hora__lt=janela_fim,
+            ).exclude(pk=pk).exists()
+            if conflito_paciente:
+                return Response(
+                    {"error": "O paciente já possui consulta em uma janela de 30 minutos neste novo horário."},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            # ...existing code (salvar atualização e log se status mudar)...
             try:
                 with transaction.atomic():
                     status_anterior = consulta.status_atual
@@ -147,10 +174,7 @@ class ConsultaAPIView(APIView):
                             pessoa=self.request.user
                         )
             except Exception as e:
-                return Response(
-                    {"error": str(e)},
-                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
-                )
+                return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
             return Response(serializer.data, status=status.HTTP_200_OK)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)

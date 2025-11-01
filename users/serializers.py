@@ -12,7 +12,22 @@ class MyTokenObtainPairSerializer(TokenObtainPairSerializer):
         token['email'] = user.email
 
         try:
-            if user.user_type == 'ADMIN':
+            # PRIORIDADE: Superuser vira ADMIN_GERAL no token
+            if getattr(user, 'is_superuser', False):
+                token['user_type'] = 'ADMIN_GERAL'
+                token['clinica_id'] = None
+                token['clinic_name'] = 'Admin Geral'
+                token['is_superuser'] = True  # opcional, ajuda no debug
+                return token
+
+            # ADMIN GERAL (quando vier explicitamente do BD)
+            if user.user_type == 'ADMIN_GERAL':
+                token['clinica_id'] = None
+                token['clinic_name'] = 'Admin Geral'
+                return token
+
+            # ADMIN de clínica (aceita ADMIN e ADMIN_CLINICA)
+            if user.user_type in ['ADMIN', 'ADMIN_CLINICA']:
                 if hasattr(user, 'perfil_admin') and user.perfil_admin and user.perfil_admin.clinica:
                     clinica = user.perfil_admin.clinica
                     token['clinica_id'] = clinica.id
@@ -20,8 +35,10 @@ class MyTokenObtainPairSerializer(TokenObtainPairSerializer):
                 else:
                     token['clinica_id'] = None
                     token['clinic_name'] = "Clínica não associada"
-                    
-            elif user.user_type == 'SECRETARIA':
+                return token
+
+            # SECRETARIA
+            if user.user_type == 'SECRETARIA':
                 if hasattr(user, 'perfil_secretaria') and user.perfil_secretaria.clinica:
                     clinica = user.perfil_secretaria.clinica
                     token['clinica_id'] = clinica.id
@@ -29,8 +46,10 @@ class MyTokenObtainPairSerializer(TokenObtainPairSerializer):
                 else:
                     token['clinica_id'] = None
                     token['clinic_name'] = "Clínica não associada"
-                    
-            elif user.user_type == 'MEDICO':
+                return token
+
+            # MÉDICO
+            if user.user_type == 'MEDICO':
                 if hasattr(user, 'perfil_medico'):
                     clinicas = user.perfil_medico.clinicas.all()
                     if clinicas:
@@ -41,8 +60,10 @@ class MyTokenObtainPairSerializer(TokenObtainPairSerializer):
                         token['clinica_ids'] = []
                         token['clinica_id'] = None
                         token['clinic_name'] = "Clínica não associada"
-                        
-            elif user.user_type == 'PACIENTE':
+                return token
+
+            # PACIENTE
+            if user.user_type == 'PACIENTE':
                 if hasattr(user, 'perfil_paciente') and user.perfil_paciente.clinica:
                     clinica = user.perfil_paciente.clinica
                     token['clinica_id'] = clinica.id
@@ -50,9 +71,12 @@ class MyTokenObtainPairSerializer(TokenObtainPairSerializer):
                 else:
                     token['clinica_id'] = None
                     token['clinic_name'] = "Clínica não associada"
-            else:
-                token['clinica_id'] = None
-                token['clinic_name'] = "Clínica não associada"
+                return token
+
+            # Fallback
+            token['clinica_id'] = None
+            token['clinic_name'] = "Clínica não associada"
+
         except Exception as e:
             print(f"Erro ao processar dados da clínica para o token: {e}")
             token['clinica_id'] = None

@@ -15,4 +15,12 @@ router.register(r'logs', LogEntryViewSet, basename='admin-log')
 urlpatterns = [
     path('', include(router.urls)),
     path('stats/', AdminDashboardStatsAPIView.as_view(), name='admin-dashboard-stats'),
+    # --- NEW: Super Admin endpoint ---
+    path('super/create-clinic-with-admin/', ClinicWithAdminCreateView.as_view(), name='super-create-clinic'),
+    # --- NEW: Super Admin endpoint ---
+    path('admin/super/create-clinic-with-admin/', ClinicWithAdminCreateView.as_view(), name='create-clinic-with-admin'),
+    # --- NOVA ROTA: lista de clínicas (Super Admin) ---
+    path('admin/super/clinics/', ClinicaListView.as_view(), name='super-clinic-list'),
+    path('admin/super/clinics/<int:pk>/', ClinicaAdminDetailView.as_view(), name='super-clinic-detail'),  # NEW
+    path('admin/super/clinics/<int:pk>/assign-admin/', AssignClinicAdminAPIView.as_view(), name='super-clinic-assign-admin'),  # NEW
 ]

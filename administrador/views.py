@@ -8,17 +8,22 @@ from django.db.models import Q
 from agendamentos.models import Consulta
 
 # Modelos do projeto
-from users.models import User
+from users.models import User, Admin
 from pacientes.models import Paciente
 from medicos.models import Medico
 from secretarias.models import Secretaria
 from .models import LogEntry
+from clinicas.models import Clinica
+from clinicas.serializers import ClinicaSerializer  # <-- ADICIONADO
 
 # Serializers do app
 from .serializers import (
     AdminUserSerializer,
     AdminUserCreateUpdateSerializer,
-    LogEntrySerializer
+    LogEntrySerializer,
+    ClinicWithAdminCreateSerializer,  # NEW
+    ClinicaListSerializer,  # NEW
+    AssignClinicAdminSerializer,  # NEW
 )
 
 from django.contrib.auth.tokens import default_token_generator
@@ -26,13 +31,26 @@ from django.utils.http import urlsafe_base64_encode
 from django.utils.encoding import force_bytes
 from django.core.mail import send_mail
 from django.conf import settings
+from rest_framework import generics
+from django.shortcuts import get_object_or_404
+
+# --- NOVO: permissão para Superuser OU Admin de clínica ---
+class IsSuperOrClinicAdmin(permissions.BasePermission):
+    def has_permission(self, request, view):
+        user = getattr(request, 'user', None)
+        if not user or not user.is_authenticated:
+            return False
+        if getattr(user, 'is_superuser', False):
+            return True
+        # Admin de clínica precisa ter perfil_admin com clínica vinculada
+        return str(getattr(user, 'user_type', '')).upper() == 'ADMIN' and hasattr(user, 'perfil_admin') and getattr(user.perfil_admin, 'clinica_id', None) is not None
 
 class AdminUserViewSet(viewsets.ModelViewSet):
     """
     Endpoint da API para administradores gerirem todos os utilizadores do sistema.
     """
     queryset = User.objects.all().order_by('first_name')
-    permission_classes = [permissions.IsAdminUser]
+    permission_classes = [IsSuperOrClinicAdmin]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter]
     filterset_fields = ['user_type', 'is_active']
     search_fields = ['first_name', 'last_name', 'email', 'cpf']
@@ -234,8 +252,19 @@ class AdminUserViewSet(viewsets.ModelViewSet):
                         raise serializers.ValidationError({"detail": "A Clínica é obrigatória para o perfil de Secretária."})
                     Secretaria.objects.create(user=user, clinica_id=clinica_id)
 
+                elif user.user_type == 'ADMIN':
+                    # Novo: cria perfil Admin vinculado a uma clínica (obrigatória)
+                    clinica_id = (
+                        self.request.data.get('clinica')
+                        or self.request.data.get('clinica_id')
+                        or admin_clinica_id
+                    )
+                    if not clinica_id:
+                        raise serializers.ValidationError({"detail": "A Clínica é obrigatória para o perfil de Admin."})
+                    Admin.objects.create(user=user, clinica_id=clinica_id)
+
                 if user.user_type in [User.UserType.MEDICO, User.UserType.SECRETARIA]:
-                   self.send_creation_email(user)
+                    self.send_creation_email(user)
 
                 LogEntry.objects.create(
                     actor=self.request.user,
@@ -324,3 +353,66 @@ class LogEntryViewSet(viewsets.ReadOnlyModelViewSet):
     filter_backends = [DjangoFilterBackend, filters.SearchFilter]
     filterset_fields = ['action_type', 'actor']
     search_fields = ['details', 'actor__cpf', 'actor__first_name']
+
+# --- NEW: Super Admin permission ---
+class IsSuperAdmin(permissions.BasePermission):
+    """
+    Allows access only to Super Admins. Supports future user_type='ADMIN_GERAL'
+    and current Django superuser.
+    """
+    def has_permission(self, request, view):
+        user = getattr(request, 'user', None)
+        if not user or not user.is_authenticated:
+            return False
+        if getattr(user, 'is_superuser', False):
+            return True
+        return str(getattr(user, 'user_type', '')).upper() == 'ADMIN_GERAL'
+
+# --- NEW: Create Clinic + first Clinic Admin ---
+class ClinicWithAdminCreateView(generics.CreateAPIView):
+    permission_classes = [IsSuperAdmin]
+    serializer_class = ClinicWithAdminCreateSerializer
+
+# --- NOVO: Listagem de Clínicas (apenas Super Admin) ---
+class ClinicaListView(generics.ListCreateAPIView):  # <-- de ListAPIView para ListCreateAPIView
+    permission_classes = [IsSuperAdmin]
+    serializer_class = ClinicaListSerializer
+
+    def get_queryset(self):
+        qs = Clinica.objects.all().order_by('nome_fantasia', 'id')
+        term = self.request.query_params.get('search')
+        if term:
+            return qs.filter(nome_fantasia__icontains=term)
+        return qs
+
+    def get_serializer_class(self):
+        # GET: lista “leve”; POST: serializer completo do app clinicas
+        if self.request.method == 'POST':
+            return ClinicaSerializer
+        return ClinicaListSerializer
+
+# --- NEW: Detalhar/Editar clínica (apenas Super Admin) ---
+class ClinicaAdminDetailView(generics.RetrieveUpdateAPIView):
+    permission_classes = [IsSuperAdmin]
+    queryset = Clinica.objects.all()
+    serializer_class = ClinicaSerializer
+
+# --- NEW: Atribuir Admin à clínica (apenas Super Admin) ---
+class AssignClinicAdminAPIView(APIView):
+    permission_classes = [IsSuperAdmin]
+
+    def post(self, request, pk, *args, **kwargs):
+        clinic = get_object_or_404(Clinica, pk=pk)
+        serializer = AssignClinicAdminSerializer(data=request.data, context={'clinic': clinic})
+        serializer.is_valid(raise_exception=True)
+        user = serializer.save()
+        return Response(
+            {
+                "message": "Administrador atribuído com sucesso.",
+                "clinic_id": clinic.id,
+                "admin_user_id": user.id,
+                "admin_name": user.get_full_name(),
+                "admin_email": user.email,
+            },
+            status=status.HTTP_200_OK,
+        )
