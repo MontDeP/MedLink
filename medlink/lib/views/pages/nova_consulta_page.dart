@@ -1,20 +1,36 @@
-// lib/views/pages/nova_consulta_page.dart
+// lib/views/pages/nova_consulta_page.dart (MODIFICADA PARA CHAMAR API)
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:medlink/models/dashboard_data_model.dart'; 
+// --- IMPORT ADICIONADO ---
+import 'package:medlink/services/api_service.dart';
 
 class NovaConsultaPage extends StatefulWidget {
-  const NovaConsultaPage({super.key});
+  final bool isRescheduling;
+  final ProximaConsulta? consultaAntiga;
+
+  const NovaConsultaPage({
+    super.key,
+    this.isRescheduling = false, 
+    this.consultaAntiga,
+  });
 
   @override
   State<NovaConsultaPage> createState() => _NovaConsultaPageState();
 }
 
 class _NovaConsultaPageState extends State<NovaConsultaPage> {
+  // --- ESTADOS ADICIONADOS ---
+  final ApiService _apiService = ApiService();
+  bool _isSaving = false;
+  // --- FIM DOS ESTADOS ADICIONADOS ---
+
   String? selectedEspecialidade;
   String? selectedMedico;
   DateTime? selectedDate;
   String? selectedHorario;
 
+  // Listas (agora dentro do State para podermos modificar)
   final List<String> especialidades = [
     'Cardiologista',
     'Dermatologista',
@@ -29,20 +45,36 @@ class _NovaConsultaPageState extends State<NovaConsultaPage> {
     'Dr. Daniel Lima'
   ];
 
-  // Função para gerar os horários disponíveis (8:00 às 17:30, sem 12h-13h30)
+  // (O método initState() permanece o mesmo)
+  @override
+  void initState() {
+    super.initState();
+    if (widget.isRescheduling && widget.consultaAntiga != null) {
+      final especialidadeAntiga = widget.consultaAntiga!.especialidade;
+      final medicoAntigo = widget.consultaAntiga!.medico;
+      if (!especialidades.contains(especialidadeAntiga)) {
+        especialidades.insert(0, especialidadeAntiga);
+      }
+      if (!medicos.contains(medicoAntigo)) {
+        medicos.insert(0, medicoAntigo);
+      }
+      selectedEspecialidade = especialidadeAntiga;
+      selectedMedico = medicoAntigo;
+    }
+  }
+
+  // (Os métodos gerarHorarios() e _abrirSeletorDeHorario() permanecem os mesmos)
   List<String> gerarHorarios() {
     List<String> horarios = [];
     TimeOfDay start = const TimeOfDay(hour: 8, minute: 0);
     TimeOfDay end = const TimeOfDay(hour: 17, minute: 30);
     TimeOfDay atual = start;
-
     while (atual.hour < end.hour || (atual.hour == end.hour && atual.minute <= end.minute)) {
       if (atual.hour < 12 || atual.hour > 13) {
         String hora = atual.hour.toString().padLeft(2, '0');
         String minuto = atual.minute.toString().padLeft(2, '0');
         horarios.add('$hora:$minuto');
       }
-
       int novaHora = atual.hour;
       int novoMinuto = atual.minute + 30;
       if (novoMinuto >= 60) {
@@ -51,13 +83,10 @@ class _NovaConsultaPageState extends State<NovaConsultaPage> {
       }
       atual = TimeOfDay(hour: novaHora, minute: novoMinuto);
     }
-
     return horarios;
   }
-
   void _abrirSeletorDeHorario(BuildContext context) {
     final List<String> horariosDisponiveis = gerarHorarios();
-
     showDialog(
       context: context,
       builder: (BuildContext context) {
@@ -130,14 +159,94 @@ class _NovaConsultaPageState extends State<NovaConsultaPage> {
     );
   }
 
+  // --- LÓGICA DE SALVAR ATUALIZADA ---
+  Future<void> _salvarNovaConsulta() async {
+    // 1. Validação dos campos
+    if (selectedEspecialidade == null ||
+        selectedMedico == null ||
+        selectedDate == null ||
+        selectedHorario == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Por favor, preencha todos os campos.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    // 2. Inicia o loading
+    setState(() => _isSaving = true);
+
+    try {
+      // 3. Monta o objeto DateTime
+      final parts = selectedHorario!.split(':');
+      final novaDataHora = DateTime(
+        selectedDate!.year,
+        selectedDate!.month,
+        selectedDate!.day,
+        int.parse(parts[0]),
+        int.parse(parts[1]),
+      );
+
+      // 4. Chama a API
+      // (Se for reagendamento, chama a API de remarcar; senão, chama a de marcar)
+      bool success;
+      if (widget.isRescheduling) {
+        success = await _apiService.remarcarConsultaPaciente(
+          widget.consultaAntiga!.id,
+          novaDataHora,
+        );
+      } else {
+        success = await _apiService.pacienteMarcarConsulta(
+          selectedEspecialidade!,
+          selectedMedico!,
+          novaDataHora,
+        );
+      }
+      
+      if (!mounted) return; // Checagem de segurança
+
+      // 5. Trata a resposta
+      if (success) {
+        final successMessage = widget.isRescheduling
+            ? 'Consulta reagendada com sucesso!'
+            : 'Consulta marcada com sucesso!';
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(successMessage),
+            backgroundColor: Colors.green,
+          ),
+        );
+        Navigator.pop(context); // Fecha a tela
+      } else {
+        throw Exception(
+          widget.isRescheduling ? 'Falha ao remarcar' : 'Falha ao marcar',
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Erro: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    } finally {
+      // 6. Para o loading
+      setState(() => _isSaving = false);
+    }
+  }
+
+
   @override
   Widget build(BuildContext context) {
+    // (O build() principal permanece o mesmo)
     return Scaffold(
       backgroundColor: const Color(0xFF5BBCDC),
       body: SafeArea(
         child: Stack(
           children: [
-            // BOTÃO DE VOLTAR
             Positioned(
               top: 20,
               left: 20,
@@ -151,8 +260,6 @@ class _NovaConsultaPageState extends State<NovaConsultaPage> {
                 ),
               ),
             ),
-
-            // CARD CENTRAL
             Center(
               child: Card(
                 shape: RoundedRectangleBorder(
@@ -166,17 +273,27 @@ class _NovaConsultaPageState extends State<NovaConsultaPage> {
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        const Text(
-                          'Nova Consulta',
-                          style: TextStyle(
+                        Text(
+                          widget.isRescheduling
+                              ? 'Reagendar Consulta'
+                              : 'Nova Consulta',
+                          style: const TextStyle(
                             fontSize: 20,
                             fontWeight: FontWeight.bold,
                           ),
                         ),
-
+                        if (widget.isRescheduling &&
+                            widget.consultaAntiga != null) ...[
+                          const SizedBox(height: 8),
+                          Text(
+                            'Consulta original: ${DateFormat("dd/MM/yyyy 'às' HH:mm", "pt_BR").format(widget.consultaAntiga!.data)}',
+                            style: const TextStyle(color: Colors.grey),
+                            textAlign: TextAlign.center,
+                          ),
+                        ],
                         const SizedBox(height: 20),
-
-                        // Especialidade
+                        
+                        // (Os campos de Especialidade e Médico permanecem os mesmos)
                         const Align(
                           alignment: Alignment.centerLeft,
                           child: Text(
@@ -206,10 +323,7 @@ class _NovaConsultaPageState extends State<NovaConsultaPage> {
                             fillColor: Colors.grey.shade100,
                           ),
                         ),
-
                         const SizedBox(height: 15),
-
-                        // Médico
                         const Align(
                           alignment: Alignment.centerLeft,
                           child: Text(
@@ -239,14 +353,13 @@ class _NovaConsultaPageState extends State<NovaConsultaPage> {
                             fillColor: Colors.grey.shade100,
                           ),
                         ),
-
                         const SizedBox(height: 15),
 
-                        // Seleção de Data
+                        // (Os campos de Data e Horário permanecem os mesmos)
                         const Align(
                           alignment: Alignment.centerLeft,
                           child: Text(
-                            'Data da Consulta',
+                            'Nova Data da Consulta',
                             style: TextStyle(fontSize: 14, color: Colors.grey),
                           ),
                         ),
@@ -287,14 +400,11 @@ class _NovaConsultaPageState extends State<NovaConsultaPage> {
                             ),
                           ),
                         ),
-
                         const SizedBox(height: 20),
-
-                        // Seleção de Horário (abre card de horários)
                         const Align(
                           alignment: Alignment.centerLeft,
                           child: Text(
-                            'Horário da Consulta',
+                            'Novo Horário da Consulta',
                             style: TextStyle(fontSize: 14, color: Colors.grey),
                           ),
                         ),
@@ -320,15 +430,15 @@ class _NovaConsultaPageState extends State<NovaConsultaPage> {
                             ),
                           ),
                         ),
-
                         const SizedBox(height: 25),
 
-                        // Botões
+                        // --- BOTÕES ATUALIZADOS ---
                         Row(
                           children: [
                             Expanded(
                               child: OutlinedButton(
-                                onPressed: () {
+                                // Desabilita o botão de cancelar durante o save
+                                onPressed: _isSaving ? null : () {
                                   Navigator.pop(context);
                                 },
                                 style: OutlinedButton.styleFrom(
@@ -347,25 +457,26 @@ class _NovaConsultaPageState extends State<NovaConsultaPage> {
                             const SizedBox(width: 10),
                             Expanded(
                               child: ElevatedButton(
-                                onPressed: () {
-                                  if (selectedDate != null &&
-                                      selectedHorario != null) {
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      SnackBar(
-                                        content: Text(
-                                          'Consulta agendada para ${DateFormat('dd/MM/yyyy').format(selectedDate!)} às $selectedHorario',
-                                        ),
-                                      ),
-                                    );
-                                  }
-                                },
+                                // Chama a nova função _salvarNovaConsulta
+                                // e desabilita o botão se _isSaving for true
+                                onPressed: _isSaving ? null : _salvarNovaConsulta,
                                 style: ElevatedButton.styleFrom(
                                   backgroundColor: const Color(0xFF317714),
                                   shape: RoundedRectangleBorder(
                                     borderRadius: BorderRadius.circular(12),
                                   ),
                                 ),
-                                child: const Text('Salvar'),
+                                // Mostra o loading ou o texto
+                                child: _isSaving 
+                                  ? const SizedBox(
+                                      width: 20, 
+                                      height: 20, 
+                                      child: CircularProgressIndicator(
+                                        color: Colors.white, 
+                                        strokeWidth: 2,
+                                      )
+                                    )
+                                  : const Text('Salvar'),
                               ),
                             ),
                           ],
