@@ -94,25 +94,20 @@ class AnotacaoConsultaSerializer(serializers.ModelSerializer):
 class DashboardConsultaSerializer(serializers.ModelSerializer):
     """
     Serializer otimizado para o card de "Próxima Consulta" do dashboard do paciente.
-    Retorna apenas os 4 campos necessários para o front-end.
+    Retorna os campos necessários para o front-end, incluindo ID e Status.
     """
 
     # O front-end espera 'medico', 'especialidade', 'data', 'local'
-
-    # Pega o nome completo do User (médico)
     medico = serializers.CharField(source='medico.get_full_name') 
-    
-    # Acessa User -> perfil_medico -> get_especialidade_display()
-    #
     especialidade = serializers.CharField(source='medico.perfil_medico.get_especialidade_display')
-
-    # Renomeia 'data_hora' para 'data'
     data = serializers.DateTimeField(source='data_hora') 
+    local = serializers.CharField(source='clinica.nome_fantasia') 
 
-    # Pega o nome da clínica
-    local = serializers.CharField(source='clinica.nome_fantasia') # Assumindo que o nome do local é 'nome_fantasia' no model Clinica
+    # Renomeia 'status_atual' para 'status' (conforme o modelo do Flutter)
+    status = serializers.CharField(source='status_atual') 
 
     class Meta:
         model = Consulta
-        # Estes são os campos que o JSON final terá
-        fields = ['medico', 'especialidade', 'data', 'local']
+        # --- CORREÇÃO APLICADA AQUI ---
+        # Adicionamos 'id' e 'status' à lista de campos
+        fields = ['id', 'medico', 'especialidade', 'data', 'local', 'status']

@@ -239,7 +239,63 @@ class ApiService {
       throw Exception('Falha ao atualizar perfil');
     }
   }
+  Future<List<ProximaConsulta>> getPacienteConsultasPendentes() async {
+    // 1. Chama o endpoint do dashboard que JÁ FUNCIONA
+    final dashboardData = await fetchDashboardData(); 
+    
+    // 2. Filtra a lista 'todasConsultas'
+    return dashboardData.todasConsultas.where((c) {
+      bool isPendenteOuConfirmada = (c.status.toLowerCase() == 'pendente' || c.status.toLowerCase() == 'confirmada');
+      // Usamos c.data (do ProximaConsulta) ao invés de c.horario
+      bool isFutura = c.data.isAfter(DateTime.now()); 
+      return isPendenteOuConfirmada && isFutura;
+    }).toList();
+  }
 
+  /// Permite ao paciente remarcar uma consulta existente.
+  /// (Este método estava correto e é mantido)
+  Future<bool> remarcarConsultaPaciente(int consultaId, DateTime novaDataHora) async {
+    // ATENÇÃO: Você precisará criar este endpoint no seu backend!
+    final url = Uri.parse("$baseUrl/api/agendamentos/$consultaId/paciente-remarcar/");
+    if (_accessToken == null) throw Exception('Token não encontrado.');
+
+    final response = await http.patch(
+      url,
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": "Bearer $_accessToken",
+      },
+      body: jsonEncode({
+        'data_hora': novaDataHora.toIso8601String(),
+      }),
+    );
+    
+    // Sucesso se for 200 OK
+    return response.statusCode == 200;
+  }
+
+  Future<bool> pacienteMarcarConsulta(String especialidade, String medico, DateTime dataHora) async {
+    // Endpoint de exemplo: /api/agendamentos/paciente-marcar/
+    final url = Uri.parse("$baseUrl/api/agendamentos/paciente-marcar/");
+    if (_accessToken == null) throw Exception('Token não encontrado.');
+
+    final response = await http.post(
+      url,
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": "Bearer $_accessToken",
+      },
+      body: jsonEncode({
+        'especialidade_nome': especialidade, // O backend precisará buscar pelo nome
+        'medico_nome': medico,       // O backend precisará buscar pelo nome
+        'data_hora': dataHora.toIso8601String(),
+      }),
+    );
+    
+    // 201 Created é o código de sucesso para um POST (criação)
+    return response.statusCode == 201;
+  }
+  
   // Busca lista de pacientes (usado pela secretária e admin)
   Future<List<Patient>> getPatients(String accessToken) async {
     final url = Uri.parse("$baseUrl/api/pacientes/");
