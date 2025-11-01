@@ -884,4 +884,133 @@ class ApiService {
       return null;
     }
   }
+
+  Future<http.Response> createClinicWithAdmin(
+    Map<String, dynamic> data,
+    String accessToken,
+  ) async {
+    final url = Uri.parse("$baseUrl/api/admin/super/create-clinic-with-admin/");
+    return await http.post(
+      url,
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $accessToken',
+      },
+      body: jsonEncode(data),
+    );
+  }
+
+  // --- NOVO: buscar todas as clínicas (Super Admin) ---
+  Future<List<Map<String, dynamic>>> getAllClinics(String accessToken) async {
+    final url = Uri.parse("$baseUrl/api/admin/super/clinics/");
+    final resp = await http.get(
+      url,
+      headers: {'Authorization': 'Bearer $accessToken'},
+    );
+    if (resp.statusCode == 200) {
+      final List<dynamic> data = json.decode(utf8.decode(resp.bodyBytes));
+      return data.cast<Map<String, dynamic>>();
+    }
+    throw Exception('Falha ao carregar clínicas (${resp.statusCode})');
+  }
+
+  // --- NOVO: listar Estados, Cidades e Tipos de Clínica ---
+  Future<List<Map<String, dynamic>>> getEstados(String accessToken) async {
+    final url = Uri.parse("$baseUrl/api/clinicas/estados/");
+    final resp = await http.get(
+      url,
+      headers: {'Authorization': 'Bearer $accessToken'},
+    );
+    if (resp.statusCode == 200) {
+      final List<dynamic> data = json.decode(utf8.decode(resp.bodyBytes));
+      return data.cast<Map<String, dynamic>>();
+    }
+    throw Exception('Falha ao carregar estados (${resp.statusCode})');
+  }
+
+  Future<List<Map<String, dynamic>>> getCidades(String accessToken) async {
+    final url = Uri.parse("$baseUrl/api/clinicas/cidades/");
+    final resp = await http.get(
+      url,
+      headers: {'Authorization': 'Bearer $accessToken'},
+    );
+    if (resp.statusCode == 200) {
+      final List<dynamic> data = json.decode(utf8.decode(resp.bodyBytes));
+      return data.cast<Map<String, dynamic>>();
+    }
+    throw Exception('Falha ao carregar cidades (${resp.statusCode})');
+  }
+
+  Future<List<Map<String, dynamic>>> getTiposClinica(String accessToken) async {
+    final url = Uri.parse("$baseUrl/api/clinicas/tipos-clinica/");
+    final resp = await http.get(
+      url,
+      headers: {'Authorization': 'Bearer $accessToken'},
+    );
+    if (resp.statusCode == 200) {
+      final List<dynamic> data = json.decode(utf8.decode(resp.bodyBytes));
+      return data.cast<Map<String, dynamic>>();
+    }
+    throw Exception('Falha ao carregar tipos de clínica (${resp.statusCode})');
+  }
+
+  // --- NOVO: criar clínica “pura” (sem admin) ---
+  Future<http.Response> createClinicOnly(
+    Map<String, dynamic> data,
+    String accessToken,
+  ) async {
+    final url = Uri.parse("$baseUrl/api/admin/super/clinics/");
+    return await http.post(
+      url,
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $accessToken',
+      },
+      body: jsonEncode(data),
+    );
+  }
+
+  // --- NOVO: atribuir Admin a uma clínica (Super Admin) ---
+  Future<http.Response> assignClinicAdmin(
+    int clinicId,
+    Map<String, dynamic> data,
+    String accessToken,
+  ) async {
+    final url = Uri.parse(
+      "$baseUrl/api/admin/super/clinics/$clinicId/assign-admin/",
+    );
+    return await http.post(
+      url,
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $accessToken',
+      },
+      body: jsonEncode(data),
+    );
+  }
+
+  // --- NOVO: listar Admins do sistema (Super Admin) ---
+  Future<List<Map<String, dynamic>>> getAdmins(
+    String accessToken, {
+    String? search,
+    bool onlyActive = true,
+  }) async {
+    final params = <String>[
+      'user_type=ADMIN',
+      if (onlyActive) 'is_active=true',
+      if (search != null && search.trim().isNotEmpty)
+        'search=${Uri.encodeQueryComponent(search.trim())}',
+    ].join('&');
+
+    final url = Uri.parse("$baseUrl/api/admin/users/?$params");
+    final resp = await http.get(
+      url,
+      headers: {'Authorization': 'Bearer $accessToken'},
+    );
+    if (resp.statusCode == 200) {
+      final List<dynamic> data = json.decode(utf8.decode(resp.bodyBytes));
+      return data.cast<Map<String, dynamic>>();
+    }
+    throw Exception('Falha ao carregar admins (${resp.statusCode})');
+  }
 }
