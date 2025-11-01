@@ -24,6 +24,9 @@ class AdminUser {
   bool isActive;
   final DateTime createdAt;
   final DateTime? lastLogin;
+  // NOVOS CAMPOS
+  final int? clinicaId; // FK para secretaria/paciente/admin
+  final List<int>? clinicaIds; // M2M para médico
 
   AdminUser({
     required this.id,
@@ -36,14 +39,27 @@ class AdminUser {
     required this.isActive,
     required this.createdAt,
     this.lastLogin,
+    this.clinicaId,
+    this.clinicaIds,
   });
 
   factory AdminUser.fromJson(Map<String, dynamic> json) {
     String fullName =
         json['full_name'] ??
         '${json['first_name'] ?? ''} ${json['last_name'] ?? ''}'.trim();
-    if (fullName.isEmpty) {
-      fullName = 'Nome não informado';
+    if (fullName.isEmpty) fullName = 'Nome não informado';
+
+    // Parse seguro de clinicaIds (lista)
+    List<int>? parseClinicaIds(dynamic v) {
+      if (v == null) return null;
+      try {
+        final list = (v as List)
+            .map((e) => int.tryParse(e.toString()) ?? 0)
+            .toList();
+        return list;
+      } catch (_) {
+        return null;
+      }
     }
 
     return AdminUser(
@@ -64,6 +80,11 @@ class AdminUser {
       lastLogin: json['last_login'] != null
           ? DateTime.tryParse(json['last_login'])
           : null,
+      // novos campos
+      clinicaId: json['clinica_id'] != null
+          ? int.tryParse(json['clinica_id'].toString())
+          : null,
+      clinicaIds: parseClinicaIds(json['clinica_ids']),
     );
   }
 }
@@ -88,6 +109,8 @@ class _AdminDashboardState extends State<AdminDashboard>
   List<AdminUser> _allUsers = [];
   bool _isLoading = true;
   String _adminName = "Admin";
+  String _clinicName = "Sua Clínica"; // Novo estado
+  int? _clinicaId; // Novo estado
 
   // Filtros
   String _searchTerm = '';
@@ -133,10 +156,40 @@ class _AdminDashboardState extends State<AdminDashboard>
       final decodedToken = JwtDecoder.decode(accessToken);
       final usersFromApi = await _apiService.getClinicUsers(accessToken);
 
+      final adminClinicId = decodedToken['clinica_id'] != null
+          ? int.tryParse(decodedToken['clinica_id'].toString())
+          : null;
+
+      debugPrint(
+        '[AdminDashboard] token.clinica_id=$adminClinicId clinic_name=${decodedToken['clinic_name']}',
+      );
+      debugPrint('[AdminDashboard] usersFromApi=${usersFromApi.length}');
+
+      List<AdminUser> filtered = usersFromApi;
+      if (adminClinicId != null) {
+        final hasHints = usersFromApi.any(
+          (u) => (u.clinicaId != null) || ((u.clinicaIds?.isNotEmpty ?? false)),
+        );
+        debugPrint('[AdminDashboard] hasHints=$hasHints');
+
+        if (hasHints) {
+          filtered = usersFromApi.where((u) {
+            if (u.role == UserRole.medico) {
+              return (u.clinicaIds?.contains(adminClinicId) ?? false);
+            } else {
+              return (u.clinicaId != null) && (u.clinicaId == adminClinicId);
+            }
+          }).toList();
+        }
+      }
+      debugPrint('[AdminDashboard] filtered=${filtered.length}');
+
       if (!mounted) return;
       setState(() {
         _adminName = decodedToken['full_name'] ?? 'Admin';
-        _allUsers = usersFromApi;
+        _clinicName = decodedToken['clinic_name'] ?? 'Clínica não associada';
+        _clinicaId = adminClinicId;
+        _allUsers = filtered;
       });
     } catch (e) {
       if (!mounted) return;
@@ -363,13 +416,36 @@ class _AdminDashboardState extends State<AdminDashboard>
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
-                  'MedLink',
-                  style: TextStyle(
-                    fontSize: 24,
-                    fontWeight: FontWeight.bold,
-                    color: primaryColor,
-                  ),
+                Row(
+                  children: [
+                    const Text(
+                      'MedLink',
+                      style: TextStyle(
+                        fontSize: 24,
+                        fontWeight: FontWeight.bold,
+                        color: primaryColor,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 4,
+                      ),
+                      decoration: BoxDecoration(
+                        color: accentColor.withOpacity(0.3),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Text(
+                        _clinicName,
+                        style: TextStyle(
+                          fontSize: 16,
+                          color: Colors.grey[800],
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
                 Text(
                   'Painel Administrativo',

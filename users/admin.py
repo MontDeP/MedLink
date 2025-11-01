@@ -1,7 +1,7 @@
 # users/admin.py (VERSÃO SIMPLIFICADA)
 
 from django.contrib import admin
-from .models import User
+from .models import User, Admin
 
 # Apenas para garantir que o admin padrão do User não seja mais usado.
 # Vamos registar os nossos admins personalizados noutros locais.
@@ -18,3 +18,10 @@ class UserAdmin(admin.ModelAdmin):
     def get_queryset(self, request):
         # Mostra apenas admins e superusers nesta vista
         return super().get_queryset(request).filter(user_type='ADMIN')
+
+@admin.register(Admin)
+class AdminAdmin(admin.ModelAdmin):
+    list_display = ['user', 'clinica', 'data_contratacao']
+    list_filter = ['clinica']
+    search_fields = ['user__first_name', 'user__last_name', 'user__cpf']
+    autocomplete_fields = ['user']

@@ -360,18 +360,64 @@ class ApiService {
 
   // ✅ ADMIN (Usuários da Clínica)
   Future<List<AdminUser>> getClinicUsers(String accessToken) async {
-    final url = Uri.parse("$baseUrl/api/admin/users/");
+    Map<String, dynamic>? payload;
+    try {
+      final parts = accessToken.split('.');
+      final normalized = base64Url.normalize(parts[1]);
+      payload = json.decode(utf8.decode(base64Url.decode(normalized)));
+    } catch (_) {
+      payload = null;
+    }
+    final clinicaId = payload?['clinica_id'];
+    debugPrint('[ApiService] token.clinica_id=$clinicaId');
+
+    final url = Uri.parse(
+      clinicaId != null
+          ? "$baseUrl/api/admin/users/?clinica=$clinicaId"
+          : "$baseUrl/api/admin/users/",
+    );
+    debugPrint('[ApiService] GET $url');
 
     final response = await http.get(
       url,
       headers: {'Authorization': 'Bearer $accessToken'},
     );
+    debugPrint('[ApiService] -> status=${response.statusCode}');
 
     if (response.statusCode == 200) {
       final List<dynamic> jsonList = json.decode(
         utf8.decode(response.bodyBytes),
       );
-      return jsonList.map((json) => AdminUser.fromJson(json)).toList();
+      debugPrint('[ApiService] users total (raw) = ${jsonList.length}');
+      final users = jsonList.map((j) => AdminUser.fromJson(j)).toList();
+
+      if (clinicaId != null) {
+        final int cid = int.tryParse(clinicaId.toString()) ?? -1;
+        final bool hasClinicHints = users.any(
+          (u) => (u.clinicaId != null) || ((u.clinicaIds?.isNotEmpty ?? false)),
+        );
+        debugPrint('[ApiService] hasClinicHints=$hasClinicHints cid=$cid');
+
+        if (hasClinicHints) {
+          final filtered = users.where((u) {
+            if (u.role == UserRole.medico) {
+              return (u.clinicaIds?.contains(cid) ?? false);
+            } else {
+              return (u.clinicaId == null) ? false : u.clinicaId == cid;
+            }
+          }).toList();
+          debugPrint(
+            '[ApiService] users total (filtered) = ${filtered.length}',
+          );
+          return filtered;
+        } else {
+          debugPrint(
+            '[ApiService] nenhuma pista de clínica nos usuários; retornando lista bruta.',
+          );
+        }
+      }
+
+      return users;
     } else {
       throw Exception(
         'Falha ao carregar usuários (Status: ${response.statusCode})',
@@ -760,13 +806,12 @@ class ApiService {
           'Authorization': 'Bearer $accessToken',
         },
       );
-
       if (response.statusCode == 200 && response.body.isNotEmpty) {
         final Map<String, dynamic> data = json.decode(
           utf8.decode(response.bodyBytes),
         );
         // Ajuste o campo conforme sua API ('nome' ou 'name')
-        return data['nome'] ?? data['name'] ?? null;
+        return data['nome'] ?? data['name'];
       } else {
         debugPrint(
           'getClinicName: resposta inválida ${response.statusCode} ${response.body}',

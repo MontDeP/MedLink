@@ -4,6 +4,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from django_filters.rest_framework import DjangoFilterBackend
 from django.db import transaction
+from django.db.models import Q
 
 # Modelos do projeto
 from users.models import User
@@ -30,13 +31,51 @@ class AdminUserViewSet(viewsets.ModelViewSet):
     Endpoint da API para administradores gerirem todos os utilizadores do sistema.
     """
     queryset = User.objects.all().order_by('first_name')
-    # CORREÇÃO: Usando a permissão padrão do Django REST Framework para administradores.
     permission_classes = [permissions.IsAdminUser]
-
-    # Filtros para a UI (busca e dropdown de tipo)
     filter_backends = [DjangoFilterBackend, filters.SearchFilter]
     filterset_fields = ['user_type', 'is_active']
     search_fields = ['first_name', 'last_name', 'email', 'cpf']
+
+    def get_queryset(self):
+        request = self.request
+        user = request.user
+        qs = User.objects.all().order_by('first_name', 'last_name')
+
+        # Querystring opcional: ?clinica=ID
+        clinica_param = request.query_params.get('clinica')
+        clinica_id_qs = None
+        try:
+            if clinica_param:
+                clinica_id_qs = int(clinica_param)
+        except Exception:
+            clinica_id_qs = None
+
+        # SUPERUSER: vê todos; se clinica informada, aplica filtro
+        if getattr(user, 'is_superuser', False):
+            if clinica_id_qs:
+                return qs.filter(
+                    Q(perfil_secretaria__clinica_id=clinica_id_qs) |
+                    Q(perfil_medico__clinicas__id=clinica_id_qs) |
+                    Q(paciente__clinica_id=clinica_id_qs) |  # <-- corrigido
+                    Q(perfil_admin__clinica_id=clinica_id_qs)
+                ).distinct().order_by('first_name', 'last_name')
+            return qs
+
+        # ADMIN de clínica (funcionário/staff do DRF): restringe à própria clínica
+        if getattr(user, 'user_type', None) == 'ADMIN' and hasattr(user, 'perfil_admin'):
+            clinica_id_admin = getattr(user.perfil_admin, 'clinica_id', None)
+            if not clinica_id_admin:
+                return User.objects.none()
+            # Ignora clinica diferente passada na URL; sempre restringe à do admin
+            return qs.filter(
+                Q(perfil_secretaria__clinica_id=clinica_id_admin) |
+                Q(perfil_medico__clinicas__id=clinica_id_admin) |
+                Q(paciente__clinica_id=clinica_id_admin) |  # <-- corrigido
+                Q(perfil_admin__clinica_id=clinica_id_admin)
+            ).distinct().order_by('first_name', 'last_name')
+
+        # Qualquer outro perfil não deve acessar a listagem completa
+        return User.objects.none()
 
     def get_serializer_class(self):
         # Usa um serializer diferente para ler vs. escrever
@@ -56,33 +95,36 @@ class AdminUserViewSet(viewsets.ModelViewSet):
                 if user.user_type == 'PACIENTE':
                     telefone = self.request.data.get('telefone', '')
                     Paciente.objects.create(user=user, telefone=telefone)
-                
+
                 elif user.user_type == 'MEDICO':
                     crm = self.request.data.get('crm')
                     especialidade = self.request.data.get('especialidade')
                     clinica_id = self.request.data.get('clinica_id')
-                    
+
                     if not crm or not especialidade:
                         raise serializers.ValidationError({"detail": "CRM e Especialidade são obrigatórios para o perfil de Médico."})
 
-                    Medico.objects.create(
-                        user=user, 
-                        crm=crm, 
-                        especialidade=especialidade, 
-                        clinica_id=clinica_id
+                    # Cria o médico e vincula a(s) clínica(s) via M2M
+                    medico = Medico.objects.create(
+                        user=user,
+                        crm=crm,
+                        especialidade=especialidade,
                     )
-                
+                    if clinica_id:
+                        try:
+                            medico.clinicas.add(int(clinica_id))  # <-- M2M
+                        except Exception:
+                            pass
+
                 elif user.user_type == 'SECRETARIA':
                     clinica_id = self.request.data.get('clinica_id')
-                    
                     if not clinica_id:
                         raise serializers.ValidationError({"detail": "A Clínica é obrigatória para o perfil de Secretária."})
-
                     Secretaria.objects.create(user=user, clinica_id=clinica_id)
 
                 if user.user_type in [User.UserType.MEDICO, User.UserType.SECRETARIA]:
                    self.send_creation_email(user)
-                
+
                 LogEntry.objects.create(
                     actor=self.request.user,
                     action_type=LogEntry.ActionType.CREATE,

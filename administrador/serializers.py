@@ -9,13 +9,38 @@ class AdminUserSerializer(serializers.ModelSerializer):
     Mostra os dados de forma legível.
     """
     user_type_display = serializers.CharField(source='get_user_type_display', read_only=True)
+    # Novos campos para o front filtrar/exibir por clínica
+    clinica_id = serializers.SerializerMethodField(read_only=True)
+    clinica_ids = serializers.SerializerMethodField(read_only=True)
 
     class Meta:
         model = User
         fields = [
             'id', 'first_name', 'last_name', 'email', 'cpf', 
-            'user_type', 'user_type_display', 'is_active', 'last_login'
+            'user_type', 'user_type_display', 'is_active', 'last_login',
+            'date_joined',  # incluído para o front
+            'clinica_id', 'clinica_ids',  # novos
         ]
+
+    def get_clinica_id(self, obj):
+        try:
+            if obj.user_type == 'SECRETARIA' and hasattr(obj, 'perfil_secretaria'):
+                return getattr(obj.perfil_secretaria, 'clinica_id', None)
+            if obj.user_type == 'PACIENTE' and hasattr(obj, 'paciente'):
+                return getattr(obj.paciente, 'clinica_id', None)
+            if obj.user_type == 'ADMIN' and hasattr(obj, 'perfil_admin'):
+                return getattr(obj.perfil_admin, 'clinica_id', None)
+        except Exception:
+            return None
+        return None
+
+    def get_clinica_ids(self, obj):
+        try:
+            if obj.user_type == 'MEDICO' and hasattr(obj, 'perfil_medico'):
+                return list(obj.perfil_medico.clinicas.values_list('id', flat=True))
+        except Exception:
+            return []
+        return []
 
 class AdminUserCreateUpdateSerializer(serializers.ModelSerializer):
     """
@@ -25,14 +50,9 @@ class AdminUserCreateUpdateSerializer(serializers.ModelSerializer):
         model = User
         fields = [
             'first_name', 'last_name', 'email', 'cpf', 
-            'user_type', 'is_active',
-            'password'
+            'user_type', 'is_active', 'password'
         ]
-        
-        # A senha agora é write_only e NÃO obrigatória.
         extra_kwargs = {
-            # 'required': False garante que não é obrigatório no payload
-            # 'allow_null': True é uma boa prática se você for enviar 'null'
             'password': {'write_only': True, 'required': False, 'allow_null': True}
         }
 
