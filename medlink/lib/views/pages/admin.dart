@@ -950,16 +950,15 @@ class _AdminDashboardState extends State<AdminDashboard>
 
   void _showCreateUserDialog() {
     final formKey = GlobalKey<FormState>();
-    // Controladores para todos os campos possíveis
     final firstNameController = TextEditingController();
     final lastNameController = TextEditingController();
     final cpfController = TextEditingController();
     final emailController = TextEditingController();
-    final clinicaIdController = TextEditingController();
+    final telefoneController = TextEditingController(); // NOVO
     final crmController = TextEditingController();
     final especialidadeController = TextEditingController();
 
-    UserRole selectedRole = UserRole.secretaria; // Valor padrão
+    UserRole selectedRole = UserRole.secretaria;
     bool isDialogLoading = false;
 
     showDialog(
@@ -975,35 +974,101 @@ class _AdminDashboardState extends State<AdminDashboard>
                   key: formKey,
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      TextFormField(
-                        controller: firstNameController,
-                        decoration: const InputDecoration(
-                          labelText: 'Primeiro Nome',
-                        ),
+                      const Text(
+                        'Dados Pessoais',
+                        style: TextStyle(fontWeight: FontWeight.w600),
                       ),
                       const SizedBox(height: 8),
-                      TextFormField(
-                        controller: lastNameController,
-                        decoration: const InputDecoration(
-                          labelText: 'Último Nome',
-                        ),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: TextFormField(
+                              controller: firstNameController,
+                              decoration: const InputDecoration(
+                                labelText: 'Primeiro Nome',
+                                border: OutlineInputBorder(),
+                              ),
+                              validator: (v) => (v == null || v.trim().isEmpty)
+                                  ? 'Obrigatório'
+                                  : null,
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: TextFormField(
+                              controller: lastNameController,
+                              decoration: const InputDecoration(
+                                labelText: 'Último Nome',
+                                border: OutlineInputBorder(),
+                              ),
+                              validator: (v) => (v == null || v.trim().isEmpty)
+                                  ? 'Obrigatório'
+                                  : null,
+                            ),
+                          ),
+                        ],
                       ),
                       const SizedBox(height: 8),
-                      TextFormField(
-                        controller: cpfController,
-                        decoration: const InputDecoration(labelText: 'CPF'),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: TextFormField(
+                              controller: cpfController,
+                              decoration: const InputDecoration(
+                                labelText: 'CPF',
+                                hintText: 'Somente números',
+                                border: OutlineInputBorder(),
+                              ),
+                              keyboardType: TextInputType.number,
+                              validator: (v) => (v == null || v.trim().isEmpty)
+                                  ? 'Obrigatório'
+                                  : null,
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: TextFormField(
+                              controller: telefoneController,
+                              decoration: const InputDecoration(
+                                labelText: 'Telefone',
+                                hintText: '(XX) 9XXXX-XXXX',
+                                border: OutlineInputBorder(),
+                              ),
+                              keyboardType: TextInputType.phone,
+                              validator: (v) => (v == null || v.trim().isEmpty)
+                                  ? 'Obrigatório'
+                                  : null,
+                            ),
+                          ),
+                        ],
                       ),
                       const SizedBox(height: 8),
                       TextFormField(
                         controller: emailController,
-                        decoration: const InputDecoration(labelText: 'E-mail'),
+                        decoration: const InputDecoration(
+                          labelText: 'E-mail',
+                          border: OutlineInputBorder(),
+                        ),
+                        keyboardType: TextInputType.emailAddress,
+                        validator: (v) => (v == null || v.trim().isEmpty)
+                            ? 'Obrigatório'
+                            : null,
+                      ),
+                      const SizedBox(height: 16),
+                      const Divider(),
+                      const SizedBox(height: 8),
+                      const Text(
+                        'Perfil',
+                        style: TextStyle(fontWeight: FontWeight.w600),
                       ),
                       const SizedBox(height: 8),
                       DropdownButtonFormField<UserRole>(
                         value: selectedRole,
                         decoration: const InputDecoration(
                           labelText: 'Tipo de Usuário',
+                          border: OutlineInputBorder(),
                         ),
                         items: UserRole.values.map((role) {
                           return DropdownMenuItem(
@@ -1017,37 +1082,61 @@ class _AdminDashboardState extends State<AdminDashboard>
                           }
                         },
                       ),
-                      const SizedBox(height: 16),
-
-                      // --- CAMPOS DINÂMICOS APARECEM AQUI ---
-
-                      // Campo de Clínica (aparece para Secretária e Médico)
-                      if (selectedRole == UserRole.secretaria ||
-                          selectedRole == UserRole.medico) ...[
-                        TextFormField(
-                          controller: clinicaIdController,
-                          decoration: const InputDecoration(
-                            labelText: 'ID da Clínica',
-                          ),
-                          keyboardType: TextInputType.number,
-                        ),
-
-                        // Campos de Médico (aparecem apenas para Médico)
-                      ],
+                      // Campos exclusivos para Médico
                       if (selectedRole == UserRole.medico) ...[
-                        const SizedBox(height: 8),
-                        TextFormField(
-                          controller: crmController,
-                          decoration: const InputDecoration(labelText: 'CRM'),
-                        ),
-                        const SizedBox(height: 8),
-                        TextFormField(
-                          controller: especialidadeController,
-                          decoration: const InputDecoration(
-                            labelText: 'Especialidade',
-                          ),
+                        const SizedBox(height: 12),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: TextFormField(
+                                controller: crmController,
+                                decoration: const InputDecoration(
+                                  labelText: 'CRM',
+                                  border: OutlineInputBorder(),
+                                ),
+                                validator: (v) =>
+                                    (selectedRole == UserRole.medico &&
+                                        (v == null || v.trim().isEmpty))
+                                    ? 'Obrigatório para Médico'
+                                    : null,
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: TextFormField(
+                                controller: especialidadeController,
+                                decoration: const InputDecoration(
+                                  labelText: 'Especialidade',
+                                  border: OutlineInputBorder(),
+                                ),
+                                validator: (v) =>
+                                    (selectedRole == UserRole.medico &&
+                                        (v == null || v.trim().isEmpty))
+                                    ? 'Obrigatório para Médico'
+                                    : null,
+                              ),
+                            ),
+                          ],
                         ),
                       ],
+                      const SizedBox(height: 8),
+                      // Observação sobre a clínica
+                      Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: Colors.blueGrey.withOpacity(0.05),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Text(
+                          _clinicaId != null
+                              ? 'Usuário será associado à clínica deste administrador (ID: $_clinicaId).'
+                              : 'Clínica do administrador não identificada. Faça login novamente se necessário.',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.grey[700],
+                          ),
+                        ),
+                      ),
                     ],
                   ),
                 ),
@@ -1061,38 +1150,35 @@ class _AdminDashboardState extends State<AdminDashboard>
                   onPressed: isDialogLoading
                       ? null
                       : () async {
-                          // A validação continua a mesma
-                          if (!(formKey.currentState?.validate() ?? false))
+                          if (!(formKey.currentState?.validate() ?? false)) {
                             return;
-
+                          }
                           setDialogState(() => isDialogLoading = true);
-
                           try {
                             final accessToken = await _storage.read(
                               key: 'access_token',
                             );
-                            if (accessToken == null)
+                            if (accessToken == null) {
                               throw Exception('Token não encontrado');
+                            }
 
-                            // --- MONTAGEM DINÂMICA DO JSON ---
+                            // Monta o payload (sem clinica_id: backend usa token)
                             final Map<String, dynamic> userData = {
-                              "cpf": cpfController.text,
-                              "email": emailController.text,
-                              "first_name": firstNameController.text,
-                              "last_name": lastNameController.text,
+                              "cpf": cpfController.text.trim(),
+                              "email": emailController.text.trim(),
+                              "first_name": firstNameController.text.trim(),
+                              "last_name": lastNameController.text.trim(),
                               "user_type": selectedRole.name.toUpperCase(),
+                              "telefone": telefoneController.text
+                                  .trim(), // NOVO
                             };
 
-                            if (selectedRole == UserRole.secretaria ||
-                                selectedRole == UserRole.medico) {
-                              userData['clinica_id'] = int.tryParse(
-                                clinicaIdController.text,
-                              );
-                            }
                             if (selectedRole == UserRole.medico) {
-                              userData['crm'] = crmController.text;
+                              userData['crm'] = crmController.text.trim();
                               userData['especialidade'] =
-                                  especialidadeController.text.toUpperCase();
+                                  especialidadeController.text
+                                      .trim()
+                                      .toUpperCase();
                             }
 
                             final response = await _apiService.createClinicUser(
@@ -1109,9 +1195,11 @@ class _AdminDashboardState extends State<AdminDashboard>
                                   backgroundColor: Colors.green,
                                 ),
                               );
-                              _loadInitialData(); // Atualiza a lista de usuários
+                              _loadInitialData();
                             } else {
-                              final error = (utf8.decode(response.bodyBytes),);
+                              final error = utf8
+                                  .decode(response.bodyBytes)
+                                  .toString();
                               throw Exception('Falha ao criar usuário: $error');
                             }
                           } catch (e) {
@@ -1123,8 +1211,9 @@ class _AdminDashboardState extends State<AdminDashboard>
                               ),
                             );
                           } finally {
-                            if (mounted)
+                            if (mounted) {
                               setDialogState(() => isDialogLoading = false);
+                            }
                           }
                         },
                   child: isDialogLoading

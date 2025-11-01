@@ -70,13 +70,23 @@ class ConsultaAPIView(APIView):
         if serializer.is_valid(raise_exception=True):
             data_hora = serializer.validated_data['data_hora']
             medico = serializer.validated_data['medico']
-            
+            paciente = serializer.validated_data['paciente']  # <-- 1) Obtém o paciente
+
+            # 2) Verificação de conflito do médico (já existia)
             if Consulta.objects.filter(medico=medico, data_hora=data_hora).exists():
                 return Response(
                     {"error": "Médico já tem uma consulta agendada para este horário."},
                     status=status.HTTP_400_BAD_REQUEST
                 )
-            
+
+            # 3) NOVA verificação: conflito do paciente
+            if Consulta.objects.filter(paciente=paciente, data_hora=data_hora).exists():
+                return Response(
+                    {"error": "Paciente já tem uma consulta agendada para este horário."},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            # ...existing code...
             try:
                 with transaction.atomic():
                     consulta = serializer.save()

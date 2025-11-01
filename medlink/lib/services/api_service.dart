@@ -399,17 +399,13 @@ class ApiService {
         debugPrint('[ApiService] hasClinicHints=$hasClinicHints cid=$cid');
 
         if (hasClinicHints) {
-          final filtered = users.where((u) {
+          return users.where((u) {
             if (u.role == UserRole.medico) {
               return (u.clinicaIds?.contains(cid) ?? false);
             } else {
               return (u.clinicaId == null) ? false : u.clinicaId == cid;
             }
           }).toList();
-          debugPrint(
-            '[ApiService] users total (filtered) = ${filtered.length}',
-          );
-          return filtered;
         } else {
           debugPrint(
             '[ApiService] nenhuma pista de clínica nos usuários; retornando lista bruta.',

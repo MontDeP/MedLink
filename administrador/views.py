@@ -5,6 +5,7 @@ from rest_framework.views import APIView
 from django_filters.rest_framework import DjangoFilterBackend
 from django.db import transaction
 from django.db.models import Q
+from agendamentos.models import Consulta
 
 # Modelos do projeto
 from users.models import User
@@ -56,26 +57,113 @@ class AdminUserViewSet(viewsets.ModelViewSet):
                 return qs.filter(
                     Q(perfil_secretaria__clinica_id=clinica_id_qs) |
                     Q(perfil_medico__clinicas__id=clinica_id_qs) |
-                    Q(paciente__clinica_id=clinica_id_qs) |  # <-- corrigido
+                    Q(paciente__clinica_id=clinica_id_qs) |
                     Q(perfil_admin__clinica_id=clinica_id_qs)
                 ).distinct().order_by('first_name', 'last_name')
             return qs
 
-        # ADMIN de clínica (funcionário/staff do DRF): restringe à própria clínica
+        # ADMIN de clínica: restringe à própria clínica
         if getattr(user, 'user_type', None) == 'ADMIN' and hasattr(user, 'perfil_admin'):
             clinica_id_admin = getattr(user.perfil_admin, 'clinica_id', None)
             if not clinica_id_admin:
                 return User.objects.none()
-            # Ignora clinica diferente passada na URL; sempre restringe à do admin
             return qs.filter(
                 Q(perfil_secretaria__clinica_id=clinica_id_admin) |
                 Q(perfil_medico__clinicas__id=clinica_id_admin) |
-                Q(paciente__clinica_id=clinica_id_admin) |  # <-- corrigido
+                Q(paciente__clinica_id=clinica_id_admin) |
                 Q(perfil_admin__clinica_id=clinica_id_admin)
             ).distinct().order_by('first_name', 'last_name')
 
-        # Qualquer outro perfil não deve acessar a listagem completa
         return User.objects.none()
+
+    def create(self, request, *args, **kwargs):
+        """
+        Criação de usuários com tratamento especial para MÉDICO:
+        - Se e-mail/CPF já existir, não cria novo User; associa o médico existente à clínica do ADM (ou às clínicas enviadas).
+        - Se não existir, segue o fluxo padrão (perform_create cria os perfis).
+        """
+        data = request.data
+        user_type = (data.get('user_type') or '').upper()
+        if user_type == 'MEDICO':
+            email = data.get('email')
+            cpf = data.get('cpf')
+
+            if email or cpf:
+                existing = User.objects.filter(
+                    Q(email=email) | Q(cpf=cpf)
+                ).first()
+
+                if existing:
+                    with transaction.atomic():
+                        # Clínica do ADM (fallback)
+                        admin_clinica_id = None
+                        try:
+                            admin_clinica_id = request.user.perfil_admin.clinica_id
+                        except Exception:
+                            admin_clinica_id = None
+
+                        # Garante perfil de médico
+                        medico = getattr(existing, 'perfil_medico', None)
+                        crm = data.get('crm')
+                        especialidade = data.get('especialidade')
+
+                        if not medico:
+                            if not crm or not especialidade:
+                                return Response(
+                                    {"detail": "CRM e Especialidade são obrigatórios para associar um médico existente."},
+                                    status=status.HTTP_400_BAD_REQUEST,
+                                )
+                            if existing.user_type != 'MEDICO':
+                                existing.user_type = 'MEDICO'
+                                existing.save()
+                            medico = Medico.objects.create(
+                                user=existing,
+                                crm=crm,
+                                especialidade=especialidade,
+                            )
+                        else:
+                            # Atualiza CRM/especialidade se enviados
+                            changed = False
+                            if crm and medico.crm != crm:
+                                medico.crm = crm
+                                changed = True
+                            if especialidade and medico.especialidade != especialidade:
+                                medico.especialidade = especialidade
+                                changed = True
+                            if changed:
+                                medico.save()
+
+                        # Determina as clínicas a associar: clinicas -> clinica_id -> ADM
+                        clinicas_ids = []
+                        raw_clinicas = data.get('clinicas')
+                        if isinstance(raw_clinicas, list) and raw_clinicas:
+                            try:
+                                clinicas_ids = [int(x) for x in raw_clinicas if str(x).isdigit()]
+                            except Exception:
+                                clinicas_ids = []
+                        if not clinicas_ids:
+                            raw_single = data.get('clinica_id') or admin_clinica_id
+                            if raw_single:
+                                try:
+                                    clinicas_ids = [int(raw_single)]
+                                except Exception:
+                                    clinicas_ids = []
+
+                        if clinicas_ids:
+                            medico.clinicas.add(*clinicas_ids)
+
+                        LogEntry.objects.create(
+                            actor=request.user,
+                            action_type=LogEntry.ActionType.UPDATE,
+                            details=f"Associou médico '{existing.get_full_name()}' às clínicas {clinicas_ids or '[]'}.",
+                        )
+
+                        # Serializa com o serializer de leitura
+                        read_data = AdminUserSerializer(existing).data
+                        return Response(read_data, status=status.HTTP_201_CREATED)
+
+        # Fluxo padrão (criação de novo usuário)
+        return super().create(request, *args, **kwargs)
 
     def get_serializer_class(self):
         # Usa um serializer diferente para ler vs. escrever
@@ -85,39 +173,63 @@ class AdminUserViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         """
-        Sobrescreve o método padrão para criar perfis associados
-        após a criação do usuário, garantindo a integridade dos dados.
+        Cria o usuário e vincula o perfil à clínica correta.
+        - Médico: usa lista 'clinicas' (M2M) se fornecida; senão usa 'clinica_id'; senão a clínica do admin.
+        - Secretária/Paciente: usa 'clinica_id' se fornecida; senão a clínica do admin.
         """
         user = serializer.save()
 
         try:
             with transaction.atomic():
+                # Clínica do admin (fallback seguro)
+                admin_clinica_id = None
+                try:
+                    admin_clinica_id = self.request.user.perfil_admin.clinica_id
+                except Exception:
+                    admin_clinica_id = None
+
                 if user.user_type == 'PACIENTE':
                     telefone = self.request.data.get('telefone', '')
-                    Paciente.objects.create(user=user, telefone=telefone)
+                    clinica_id = self.request.data.get('clinica_id') or admin_clinica_id
+                    # Vincula paciente à mesma clínica do admin se não vier no payload
+                    Paciente.objects.create(user=user, telefone=telefone, clinica_id=clinica_id)
 
                 elif user.user_type == 'MEDICO':
                     crm = self.request.data.get('crm')
                     especialidade = self.request.data.get('especialidade')
-                    clinica_id = self.request.data.get('clinica_id')
 
                     if not crm or not especialidade:
                         raise serializers.ValidationError({"detail": "CRM e Especialidade são obrigatórios para o perfil de Médico."})
 
-                    # Cria o médico e vincula a(s) clínica(s) via M2M
+                    # Cria o médico
                     medico = Medico.objects.create(
                         user=user,
                         crm=crm,
                         especialidade=especialidade,
                     )
-                    if clinica_id:
+
+                    # Determina as clínicas a vincular (prioridade: 'clinicas' -> 'clinica_id' -> do admin)
+                    clinicas_ids = []
+                    raw_clinicas = self.request.data.get('clinicas')
+                    if isinstance(raw_clinicas, list) and raw_clinicas:
+                        # lista enviada pelo frontend
                         try:
-                            medico.clinicas.add(int(clinica_id))  # <-- M2M
+                            clinicas_ids = [int(x) for x in raw_clinicas if str(x).isdigit()]
                         except Exception:
-                            pass
+                            clinicas_ids = []
+                    if not clinicas_ids:
+                        raw_single = self.request.data.get('clinica_id') or admin_clinica_id
+                        if raw_single:
+                            try:
+                                clinicas_ids = [int(raw_single)]
+                            except Exception:
+                                clinicas_ids = []
+
+                    if clinicas_ids:
+                        medico.clinicas.add(*clinicas_ids)
 
                 elif user.user_type == 'SECRETARIA':
-                    clinica_id = self.request.data.get('clinica_id')
+                    clinica_id = self.request.data.get('clinica_id') or admin_clinica_id
                     if not clinica_id:
                         raise serializers.ValidationError({"detail": "A Clínica é obrigatória para o perfil de Secretária."})
                     Secretaria.objects.create(user=user, clinica_id=clinica_id)

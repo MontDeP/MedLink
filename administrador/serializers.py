@@ -12,6 +12,8 @@ class AdminUserSerializer(serializers.ModelSerializer):
     # Novos campos para o front filtrar/exibir por clínica
     clinica_id = serializers.SerializerMethodField(read_only=True)
     clinica_ids = serializers.SerializerMethodField(read_only=True)
+    crm = serializers.SerializerMethodField(read_only=True)         # novo
+    specialty = serializers.SerializerMethodField(read_only=True)   # novo
 
     class Meta:
         model = User
@@ -20,6 +22,7 @@ class AdminUserSerializer(serializers.ModelSerializer):
             'user_type', 'user_type_display', 'is_active', 'last_login',
             'date_joined',  # incluído para o front
             'clinica_id', 'clinica_ids',  # novos
+            'crm', 'specialty',  # novos
         ]
 
     def get_clinica_id(self, obj):
@@ -41,6 +44,23 @@ class AdminUserSerializer(serializers.ModelSerializer):
         except Exception:
             return []
         return []
+
+    def get_crm(self, obj):
+        try:
+            if obj.user_type == 'MEDICO' and hasattr(obj, 'perfil_medico'):
+                return obj.perfil_medico.crm
+        except Exception:
+            return None
+        return None
+
+    def get_specialty(self, obj):
+        try:
+            if obj.user_type == 'MEDICO' and hasattr(obj, 'perfil_medico'):
+                # Ajuste conforme seu model (string ou choices)
+                return getattr(obj.perfil_medico, 'especialidade', None)
+        except Exception:
+            return None
+        return None
 
 class AdminUserCreateUpdateSerializer(serializers.ModelSerializer):
     """
