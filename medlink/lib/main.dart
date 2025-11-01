@@ -20,6 +20,8 @@ import 'views/pages/medico_dashboard_page.dart';
 import 'views/pages/medico_agenda_page.dart';
 import 'views/pages/reset_password_page.dart';
 import 'package:medlink/views/pages/create_password_page.dart';
+import 'package:medlink/views/pages/nova_consulta_page.dart'; 
+import 'package:medlink/views/pages/remarcar_consulta_page.dart';
 
 // Controllers
 import 'controllers/paciente_controller.dart';
@@ -136,6 +138,24 @@ class MyApp extends StatelessWidget {
              print("Erro: Argumento para /admin/edit-user não é String. Redirecionando para Login.");
              return GetPageRoute(settings: settings, page: () => const LoginPage());
           }
+        }
+
+        // Rota para a página de Nova Consulta
+        if (settings.name == '/nova-consulta') {
+          return GetPageRoute(
+            settings: settings,
+            page: () => const NovaConsultaPage(),
+            transition: Transition.rightToLeft,
+          );
+        }
+
+        // Rota para a página de Remarcar Consulta
+        if (settings.name == '/remarcar-consulta') {
+          return GetPageRoute(
+            settings: settings,
+            page: () => const RemarcarConsultaPage(),
+            transition: Transition.rightToLeft,
+          );
         }
 
         // Rota para /reset-password?uid=...&token=...
