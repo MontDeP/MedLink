@@ -23,4 +23,9 @@ urlpatterns = [
     path('admin/super/clinics/', ClinicaListView.as_view(), name='super-clinic-list'),
     path('admin/super/clinics/<int:pk>/', ClinicaAdminDetailView.as_view(), name='super-clinic-detail'),  # NEW
     path('admin/super/clinics/<int:pk>/assign-admin/', AssignClinicAdminAPIView.as_view(), name='super-clinic-assign-admin'),  # NEW
+    # --- NOVA ROTA: lista de clínicas (Admin) ---
+    path('clinicas/', ClinicaListView.as_view(), name='admin-clinicas-list'),
+    path('clinicas/create-with-admin/', ClinicWithAdminCreateView.as_view(), name='admin-clinic-create-with-admin'),
+    path('clinicas/<int:pk>/', ClinicaAdminDetailView.as_view(), name='admin-clinica-detail'),
+    path('clinicas/<int:pk>/assign-admin/', AssignClinicAdminAPIView.as_view(), name='admin-clinica-assign-admin'),
 ]

@@ -10,7 +10,6 @@ from rest_framework.permissions import IsAuthenticated
 # Importando os modelos e serializers necessários
 from agendamentos.models import Consulta, ConsultaStatusLog
 from .serializers import DashboardStatsSerializer, ConsultaHojeSerializer
-from .serializers import DashboardStatsSerializer, ConsultaHojeSerializer
 from users.permissions import HasRole
 
 # 1. IMPORTE AS CONSTANTES DE STATUS DO SEU APP DE AGENDAMENTOS

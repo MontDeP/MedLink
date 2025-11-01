@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 import 'dart:convert';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:jwt_decoder/jwt_decoder.dart';
+import 'package:get/get.dart'; // navegação pós-logout
 import '../../services/api_service.dart';
 import '../../models/dashboard_stats_model.dart';
 import 'package:medlink/models/appointment_model.dart';
@@ -92,13 +93,20 @@ class _SecretaryDashboardState extends State<SecretaryDashboard> {
   // Realiza logout limpando os tokens do armazenamento seguro e chamando o callback.
   void _logout() async {
     try {
+      // Limpa os tokens (ou tudo, por segurança)
       await _storage.delete(key: 'access_token');
       await _storage.delete(key: 'refresh_token');
     } catch (_) {
-      // Ignora erros ao limpar o storage.
+      // Ignora erros ao limpar o storage
     }
-    // Notifica o app para navegar para a tela de login ou executar ações pós-logout.
-    widget.onLogout?.call();
+    // Se o caller forneceu um callback, usa-o
+    if (widget.onLogout != null) {
+      widget.onLogout!();
+      return;
+    }
+    // Fallback: força navegação para a tela de login
+    if (!mounted) return;
+    Get.offAllNamed('/'); // retorna para LoginPage
   }
 
   // Em _SecretaryDashboardState

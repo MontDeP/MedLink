@@ -177,7 +177,9 @@ class _AdminDashboardState extends State<AdminDashboard>
             if (u.role == UserRole.medico) {
               return (u.clinicaIds?.contains(adminClinicId) ?? false);
             } else {
-              return (u.clinicaId != null) && (u.clinicaId == adminClinicId);
+              // Inclui usuários sem clinicaId (ex.: pacientes criados sem vínculo),
+              // pois o backend já retornou apenas os da clínica ou com consultas nela.
+              return (u.clinicaId == null) || (u.clinicaId == adminClinicId);
             }
           }).toList();
         }

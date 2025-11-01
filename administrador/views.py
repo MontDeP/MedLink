@@ -5,6 +5,7 @@ from rest_framework.views import APIView
 from django_filters.rest_framework import DjangoFilterBackend
 from django.db import transaction
 from django.db.models import Q
+from django.db.models import Exists, OuterRef
 from agendamentos.models import Consulta
 
 # Modelos do projeto
@@ -69,14 +70,27 @@ class AdminUserViewSet(viewsets.ModelViewSet):
         except Exception:
             clinica_id_qs = None
 
+        # Helper: marca usuários PACIENTE que têm ao menos uma consulta na clínica alvo
+        def annotate_has_consulta(qs_in, clinica_id: int):
+            return qs_in.annotate(
+                _has_consulta_na_clinica=Exists(
+                    Consulta.objects.filter(
+                        paciente__user=OuterRef('pk'),
+                        clinica_id=clinica_id,
+                    )
+                )
+            )
+
         # SUPERUSER: vê todos; se clinica informada, aplica filtro
         if getattr(user, 'is_superuser', False):
             if clinica_id_qs:
-                return qs.filter(
+                qs_ann = annotate_has_consulta(qs, clinica_id_qs)
+                return qs_ann.filter(
                     Q(perfil_secretaria__clinica_id=clinica_id_qs) |
                     Q(perfil_medico__clinicas__id=clinica_id_qs) |
                     Q(paciente__clinica_id=clinica_id_qs) |
-                    Q(perfil_admin__clinica_id=clinica_id_qs)
+                    Q(perfil_admin__clinica_id=clinica_id_qs) |
+                    (Q(user_type='PACIENTE') & Q(_has_consulta_na_clinica=True))
                 ).distinct().order_by('first_name', 'last_name')
             return qs
 
@@ -85,11 +99,13 @@ class AdminUserViewSet(viewsets.ModelViewSet):
             clinica_id_admin = getattr(user.perfil_admin, 'clinica_id', None)
             if not clinica_id_admin:
                 return User.objects.none()
-            return qs.filter(
+            qs_ann = annotate_has_consulta(qs, clinica_id_admin)
+            return qs_ann.filter(
                 Q(perfil_secretaria__clinica_id=clinica_id_admin) |
                 Q(perfil_medico__clinicas__id=clinica_id_admin) |
                 Q(paciente__clinica_id=clinica_id_admin) |
-                Q(perfil_admin__clinica_id=clinica_id_admin)
+                Q(perfil_admin__clinica_id=clinica_id_admin) |
+                (Q(user_type='PACIENTE') & Q(_has_consulta_na_clinica=True))
             ).distinct().order_by('first_name', 'last_name')
 
         return User.objects.none()

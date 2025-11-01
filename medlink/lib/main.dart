@@ -1,16 +1,19 @@
-// medlink/lib/main.dart
+// medlink/lib/main.dart (CORRIGIDO)
 
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:intl/date_symbol_data_local.dart';
+// IMPORTAÇÃO NECESSÁRIA PARA LOCALIZAÇÃO:
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:medlink/views/pages/home_page.dart';
+import 'package:medlink/views/pages/main_navigation.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter_web_plugins/url_strategy.dart';
 
 // Views
 import 'views/pages/login.dart';
 import 'views/pages/register.dart';
-import 'views/pages/dashboard_page.dart';
+import 'views/pages/dashboard_page.dart'; // Presumo que seja SecretaryDashboard
 import 'views/pages/admin.dart';
 import 'views/pages/admin_edit_user_page.dart';
 import 'views/pages/medico_dashboard_page.dart';
@@ -18,6 +21,8 @@ import 'views/pages/medico_agenda_page.dart';
 import 'views/pages/reset_password_page.dart';
 import 'package:medlink/views/pages/create_password_page.dart';
 import 'views/pages/super_admin_dashboard_page.dart';
+import 'package:medlink/views/pages/nova_consulta_page.dart';
+import 'package:medlink/views/pages/remarcar_consulta_page.dart';
 
 // Controllers
 import 'controllers/paciente_controller.dart';
@@ -46,6 +51,20 @@ class MyApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       title: 'MedLink',
       theme: ThemeData(primarySwatch: Colors.blue),
+
+      // Adiciona os delegados de localização.
+      localizationsDelegates: const [
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+      ],
+      // Define os idiomas suportados.
+      supportedLocales: const [
+        Locale('pt', 'BR'), // Português (Brasil)
+        // Locale('en', 'US'), // Você pode adicionar inglês se quiser
+      ],
+      // Define o idioma padrão do app
+      locale: const Locale('pt', 'BR'),
       initialRoute: '/',
 
       // Usando onGenerateRoute para ter controle sobre rotas dinâmicas
@@ -108,15 +127,27 @@ class MyApp extends StatelessWidget {
 
         // Rota para /user/dashboard
         if (settings.name == '/user/dashboard') {
-          return GetPageRoute(settings: settings, page: () => const HomePage());
-        }
-
-        // Rota para /admin/edit-user (que você já tinha)
-        if (settings.name == '/admin/edit-user') {
-          final userId = settings.arguments as String;
           return GetPageRoute(
             settings: settings,
-            page: () => AdminEditUserPage(userId: userId),
+            page: () => const MainNavigation(),
+          );
+        }
+
+        // Rota para a página de Nova Consulta
+        if (settings.name == '/nova-consulta') {
+          return GetPageRoute(
+            settings: settings,
+            page: () => const NovaConsultaPage(),
+            transition: Transition.rightToLeft,
+          );
+        }
+
+        // Rota para a página de Remarcar Consulta
+        if (settings.name == '/remarcar-consulta') {
+          return GetPageRoute(
+            settings: settings,
+            page: () => const RemarcarConsultaPage(),
+            transition: Transition.rightToLeft,
           );
         }
 
@@ -164,6 +195,9 @@ class MyApp extends StatelessWidget {
         }
 
         // Se nenhuma rota bater, retorna para a página de Login
+        print(
+          "Aviso: Rota '${settings.name}' não encontrada. Redirecionando para Login.",
+        );
         return GetPageRoute(settings: settings, page: () => const LoginPage());
       },
     );
