@@ -129,10 +129,26 @@ class _SuperAdminDashboardPageState extends State<SuperAdminDashboardPage>
     }
     return ListView.separated(
       padding: const EdgeInsets.all(24),
-      itemCount: _clinics.length,
+      itemCount: _clinics.length + 1,
       separatorBuilder: (_, __) => const Divider(color: Colors.grey),
       itemBuilder: (_, i) {
-        final c = _clinics[i];
+        if (i == 0) {
+          return Align(
+            alignment: Alignment.centerLeft,
+            child: ElevatedButton.icon(
+              onPressed: _openCreateAdminDialog,
+              icon: const Icon(Icons.person_add, color: Colors.white),
+              label: const Text(
+                'Novo Administrador',
+                style: TextStyle(color: Colors.white),
+              ),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF0891B2),
+              ),
+            ),
+          );
+        }
+        final c = _clinics[i - 1];
         final name = (c['nome_fantasia'] ?? c['nome'] ?? 'Clínica').toString();
         final dynamicId = c['id'];
         final int id = (dynamicId is int)
@@ -148,6 +164,183 @@ class _SuperAdminDashboardPageState extends State<SuperAdminDashboardPage>
           ),
           onTap: () =>
               _openAssignAdminSheet(id, name), // <-- mantém abrir modal
+        );
+      },
+    );
+  }
+
+  // Modal: criar novo Admin (não superuser)
+  void _openCreateAdminDialog() {
+    final formKey = GlobalKey<FormState>();
+    final firstNameCtrl = TextEditingController();
+    final lastNameCtrl = TextEditingController();
+    final cpfCtrl = TextEditingController();
+    final emailCtrl = TextEditingController();
+    final passCtrl = TextEditingController();
+    int? selectedClinicId;
+    bool saving = false;
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            Future<void> submit() async {
+              if (!(formKey.currentState?.validate() ?? false)) return;
+              if (selectedClinicId == null) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Selecione a clínica.'),
+                    backgroundColor: Colors.red,
+                  ),
+                );
+                return;
+              }
+              setDialogState(() => saving = true);
+              try {
+                final token = await _storage.read(key: 'access_token');
+                if (token == null) throw Exception('Token não encontrado');
+                final payload = {
+                  'first_name': firstNameCtrl.text.trim(),
+                  'last_name': lastNameCtrl.text.trim(),
+                  'cpf': cpfCtrl.text.replaceAll(RegExp(r'[^0-9]'), ''),
+                  'email': emailCtrl.text.trim(),
+                  'password': passCtrl.text,
+                  'user_type': 'ADMIN',
+                  'clinica':
+                      selectedClinicId, // usado no backend para criar perfil Admin
+                };
+                final resp = await _apiService.createClinicUser(payload, token);
+                if (resp.statusCode == 201 || resp.statusCode == 200) {
+                  if (!mounted) return;
+                  Navigator.pop(context);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Administrador criado com sucesso!'),
+                      backgroundColor: Colors.green,
+                    ),
+                  );
+                } else {
+                  final msg = utf8.decode(resp.bodyBytes);
+                  throw Exception('Falha (${resp.statusCode}): $msg');
+                }
+              } catch (e) {
+                if (!mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('Erro: $e'),
+                    backgroundColor: Colors.red,
+                  ),
+                );
+              } finally {
+                setDialogState(() => saving = false);
+              }
+            }
+
+            final inputDecoration = const InputDecoration(
+              border: OutlineInputBorder(),
+            );
+            return AlertDialog(
+              title: const Text('Novo Administrador de Clínica'),
+              content: SingleChildScrollView(
+                child: Form(
+                  key: formKey,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      TextFormField(
+                        controller: firstNameCtrl,
+                        decoration: inputDecoration.copyWith(
+                          labelText: 'Primeiro Nome',
+                        ),
+                        validator: (v) => (v == null || v.trim().isEmpty)
+                            ? 'Obrigatório'
+                            : null,
+                      ),
+                      const SizedBox(height: 12),
+                      TextFormField(
+                        controller: lastNameCtrl,
+                        decoration: inputDecoration.copyWith(
+                          labelText: 'Último Nome',
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      TextFormField(
+                        controller: cpfCtrl,
+                        decoration: inputDecoration.copyWith(labelText: 'CPF'),
+                        validator: (v) => (v == null || v.trim().isEmpty)
+                            ? 'Obrigatório'
+                            : null,
+                      ),
+                      const SizedBox(height: 12),
+                      TextFormField(
+                        controller: emailCtrl,
+                        decoration: inputDecoration.copyWith(
+                          labelText: 'E-mail',
+                        ),
+                        validator: (v) => (v == null || v.trim().isEmpty)
+                            ? 'Obrigatório'
+                            : null,
+                      ),
+                      const SizedBox(height: 12),
+                      TextFormField(
+                        controller: passCtrl,
+                        obscureText: true,
+                        decoration: inputDecoration.copyWith(
+                          labelText: 'Senha',
+                        ),
+                        validator: (v) =>
+                            (v == null || v.isEmpty) ? 'Obrigatório' : null,
+                      ),
+                      const SizedBox(height: 12),
+                      DropdownButtonFormField<int>(
+                        value: selectedClinicId,
+                        items: _clinics.map((c) {
+                          final id = c['id'] is int
+                              ? c['id'] as int
+                              : int.tryParse('${c['id']}') ?? -1;
+                          final name =
+                              (c['nome_fantasia'] ?? c['nome'] ?? 'Clínica')
+                                  .toString();
+                          return DropdownMenuItem<int>(
+                            value: id,
+                            child: Text(name),
+                          );
+                        }).toList(),
+                        onChanged: (v) =>
+                            setDialogState(() => selectedClinicId = v),
+                        decoration: inputDecoration.copyWith(
+                          labelText: 'Clínica',
+                        ),
+                        validator: (v) =>
+                            v == null ? 'Selecione a clínica' : null,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('Cancelar'),
+                ),
+                ElevatedButton(
+                  onPressed: saving ? null : submit,
+                  child: saving
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        )
+                      : const Text('Criar'),
+                ),
+              ],
+            );
+          },
         );
       },
     );
