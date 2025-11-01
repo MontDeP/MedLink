@@ -89,6 +89,18 @@ class _SecretaryDashboardState extends State<SecretaryDashboard> {
     super.dispose();
   }
 
+  // Realiza logout limpando os tokens do armazenamento seguro e chamando o callback.
+  void _logout() async {
+    try {
+      await _storage.delete(key: 'access_token');
+      await _storage.delete(key: 'refresh_token');
+    } catch (_) {
+      // Ignora erros ao limpar o storage.
+    }
+    // Notifica o app para navegar para a tela de login ou executar ações pós-logout.
+    widget.onLogout?.call();
+  }
+
   // Em _SecretaryDashboardState
   Map<String, int> get _summaryStats {
     return {
