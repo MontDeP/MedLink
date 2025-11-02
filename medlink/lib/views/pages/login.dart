@@ -4,7 +4,7 @@ import 'package:medlink/views/pages/forgot_password_page.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../../controllers/login_controller.dart';
 import 'package:mask_text_input_formatter/mask_text_input_formatter.dart';
-
+import 'super_admin_dashboard_page.dart'; // novo import
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -61,6 +61,12 @@ class _LoginPageState extends State<LoginPage> {
 
       // Redirecionamento conforme tipo de usuário
       switch (userType) {
+        case 'ADMIN_GERAL': // novo case
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(builder: (_) => const SuperAdminDashboardPage()),
+          );
+          break;
         case 'SECRETARIA':
           Navigator.pushReplacementNamed(context, '/secretary/dashboard');
           break;
@@ -85,73 +91,73 @@ class _LoginPageState extends State<LoginPage> {
     }
   }
 
- @override
-Widget build(BuildContext context) {
-  return Scaffold(
-    backgroundColor: const Color(0xFF5BBCDC),
-    body: Center(
-      child: SingleChildScrollView(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 500, maxHeight: 620),
-          child: Card(
-            elevation: 6,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(16),
-            ),
-            margin: const EdgeInsets.all(16),
-            child: Padding(
-              padding: const EdgeInsets.all(24),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  SizedBox(
-                    height: 80,
-                    child: Image.asset(
-                      'assets/images/Logo.png',
-                      fit: BoxFit.contain,
-                      errorBuilder: (context, error, stackTrace) {
-                        return const Icon(Icons.broken_image, size: 80);
-                      },
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  const Text(
-                    "Realizar Login",
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  const SizedBox(height: 24),
-                  const Text("CPF:"),
-                  const SizedBox(height: 8),
-                  // ===== INÍCIO DA CORREÇÃO =====
-                  TextField(
-                    controller: _cpfController,
-                    keyboardType: TextInputType.number,
-                    inputFormatters: [_cpfMaskFormatter],
-                    // A 'decoration' foi movida para DENTRO do TextField
-                    decoration: InputDecoration(
-                      prefixIcon: const Icon(Icons.badge),
-                      hintText: "000.000.000-00",
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(8),
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFF5BBCDC),
+      body: Center(
+        child: SingleChildScrollView(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 500, maxHeight: 620),
+            child: Card(
+              elevation: 6,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
+              margin: const EdgeInsets.all(16),
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    SizedBox(
+                      height: 80,
+                      child: Image.asset(
+                        'assets/images/Logo.png',
+                        fit: BoxFit.contain,
+                        errorBuilder: (context, error, stackTrace) {
+                          return const Icon(Icons.broken_image, size: 80);
+                        },
                       ),
-                      focusedBorder: OutlineInputBorder(
-                        borderSide: const BorderSide(
-                          color: Color(0xFF5BBCDC),
-                          width: 2,
+                    ),
+                    const SizedBox(height: 16),
+                    const Text(
+                      "Realizar Login",
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                    const Text("CPF:"),
+                    const SizedBox(height: 8),
+                    // ===== INÍCIO DA CORREÇÃO =====
+                    TextField(
+                      controller: _cpfController,
+                      keyboardType: TextInputType.number,
+                      inputFormatters: [_cpfMaskFormatter],
+                      // A 'decoration' foi movida para DENTRO do TextField
+                      decoration: InputDecoration(
+                        prefixIcon: const Icon(Icons.badge),
+                        hintText: "000.000.000-00",
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
                         ),
-                        borderRadius: BorderRadius.circular(8),
+                        focusedBorder: OutlineInputBorder(
+                          borderSide: const BorderSide(
+                            color: Color(0xFF5BBCDC),
+                            width: 2,
+                          ),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
                       ),
                     ),
-                  ),
-                  // ===== FIM DA CORREÇÃO =====
-                  const SizedBox(height: 16),
-                  const Text("Senha:"),
-                  const SizedBox(height: 8),
-                  TextField(
+                    // ===== FIM DA CORREÇÃO =====
+                    const SizedBox(height: 16),
+                    const Text("Senha:"),
+                    const SizedBox(height: 8),
+                    TextField(
                       controller: _senhaController,
                       obscureText: _obscurePassword,
                       decoration: InputDecoration(
@@ -185,7 +191,7 @@ Widget build(BuildContext context) {
                       alignment: Alignment.centerRight,
                       child: TextButton(
                         onPressed: () {
-                         Get.to(() => ForgotPasswordPage());
+                          Get.to(() => ForgotPasswordPage());
                         },
                         child: const Text("Esqueci minha senha"),
                       ),

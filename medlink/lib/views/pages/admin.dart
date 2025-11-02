@@ -24,6 +24,9 @@ class AdminUser {
   bool isActive;
   final DateTime createdAt;
   final DateTime? lastLogin;
+  // NOVOS CAMPOS
+  final int? clinicaId; // FK para secretaria/paciente/admin
+  final List<int>? clinicaIds; // M2M para médico
 
   AdminUser({
     required this.id,
@@ -36,14 +39,27 @@ class AdminUser {
     required this.isActive,
     required this.createdAt,
     this.lastLogin,
+    this.clinicaId,
+    this.clinicaIds,
   });
 
   factory AdminUser.fromJson(Map<String, dynamic> json) {
     String fullName =
         json['full_name'] ??
         '${json['first_name'] ?? ''} ${json['last_name'] ?? ''}'.trim();
-    if (fullName.isEmpty) {
-      fullName = 'Nome não informado';
+    if (fullName.isEmpty) fullName = 'Nome não informado';
+
+    // Parse seguro de clinicaIds (lista)
+    List<int>? parseClinicaIds(dynamic v) {
+      if (v == null) return null;
+      try {
+        final list = (v as List)
+            .map((e) => int.tryParse(e.toString()) ?? 0)
+            .toList();
+        return list;
+      } catch (_) {
+        return null;
+      }
     }
 
     return AdminUser(
@@ -64,6 +80,11 @@ class AdminUser {
       lastLogin: json['last_login'] != null
           ? DateTime.tryParse(json['last_login'])
           : null,
+      // novos campos
+      clinicaId: json['clinica_id'] != null
+          ? int.tryParse(json['clinica_id'].toString())
+          : null,
+      clinicaIds: parseClinicaIds(json['clinica_ids']),
     );
   }
 }
@@ -88,6 +109,8 @@ class _AdminDashboardState extends State<AdminDashboard>
   List<AdminUser> _allUsers = [];
   bool _isLoading = true;
   String _adminName = "Admin";
+  String _clinicName = "Sua Clínica"; // Novo estado
+  int? _clinicaId; // Novo estado
 
   // Filtros
   String _searchTerm = '';
@@ -133,10 +156,42 @@ class _AdminDashboardState extends State<AdminDashboard>
       final decodedToken = JwtDecoder.decode(accessToken);
       final usersFromApi = await _apiService.getClinicUsers(accessToken);
 
+      final adminClinicId = decodedToken['clinica_id'] != null
+          ? int.tryParse(decodedToken['clinica_id'].toString())
+          : null;
+
+      debugPrint(
+        '[AdminDashboard] token.clinica_id=$adminClinicId clinic_name=${decodedToken['clinic_name']}',
+      );
+      debugPrint('[AdminDashboard] usersFromApi=${usersFromApi.length}');
+
+      List<AdminUser> filtered = usersFromApi;
+      if (adminClinicId != null) {
+        final hasHints = usersFromApi.any(
+          (u) => (u.clinicaId != null) || ((u.clinicaIds?.isNotEmpty ?? false)),
+        );
+        debugPrint('[AdminDashboard] hasHints=$hasHints');
+
+        if (hasHints) {
+          filtered = usersFromApi.where((u) {
+            if (u.role == UserRole.medico) {
+              return (u.clinicaIds?.contains(adminClinicId) ?? false);
+            } else {
+              // Inclui usuários sem clinicaId (ex.: pacientes criados sem vínculo),
+              // pois o backend já retornou apenas os da clínica ou com consultas nela.
+              return (u.clinicaId == null) || (u.clinicaId == adminClinicId);
+            }
+          }).toList();
+        }
+      }
+      debugPrint('[AdminDashboard] filtered=${filtered.length}');
+
       if (!mounted) return;
       setState(() {
         _adminName = decodedToken['full_name'] ?? 'Admin';
-        _allUsers = usersFromApi;
+        _clinicName = decodedToken['clinic_name'] ?? 'Clínica não associada';
+        _clinicaId = adminClinicId;
+        _allUsers = filtered;
       });
     } catch (e) {
       if (!mounted) return;
@@ -363,13 +418,36 @@ class _AdminDashboardState extends State<AdminDashboard>
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
-                  'MedLink',
-                  style: TextStyle(
-                    fontSize: 24,
-                    fontWeight: FontWeight.bold,
-                    color: primaryColor,
-                  ),
+                Row(
+                  children: [
+                    const Text(
+                      'MedLink',
+                      style: TextStyle(
+                        fontSize: 24,
+                        fontWeight: FontWeight.bold,
+                        color: primaryColor,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 4,
+                      ),
+                      decoration: BoxDecoration(
+                        color: accentColor.withOpacity(0.3),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Text(
+                        _clinicName,
+                        style: TextStyle(
+                          fontSize: 16,
+                          color: Colors.grey[800],
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
                 Text(
                   'Painel Administrativo',
@@ -874,16 +952,15 @@ class _AdminDashboardState extends State<AdminDashboard>
 
   void _showCreateUserDialog() {
     final formKey = GlobalKey<FormState>();
-    // Controladores para todos os campos possíveis
     final firstNameController = TextEditingController();
     final lastNameController = TextEditingController();
     final cpfController = TextEditingController();
     final emailController = TextEditingController();
-    final clinicaIdController = TextEditingController();
+    final telefoneController = TextEditingController(); // NOVO
     final crmController = TextEditingController();
     final especialidadeController = TextEditingController();
 
-    UserRole selectedRole = UserRole.secretaria; // Valor padrão
+    UserRole selectedRole = UserRole.secretaria;
     bool isDialogLoading = false;
 
     showDialog(
@@ -899,35 +976,101 @@ class _AdminDashboardState extends State<AdminDashboard>
                   key: formKey,
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      TextFormField(
-                        controller: firstNameController,
-                        decoration: const InputDecoration(
-                          labelText: 'Primeiro Nome',
-                        ),
+                      const Text(
+                        'Dados Pessoais',
+                        style: TextStyle(fontWeight: FontWeight.w600),
                       ),
                       const SizedBox(height: 8),
-                      TextFormField(
-                        controller: lastNameController,
-                        decoration: const InputDecoration(
-                          labelText: 'Último Nome',
-                        ),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: TextFormField(
+                              controller: firstNameController,
+                              decoration: const InputDecoration(
+                                labelText: 'Primeiro Nome',
+                                border: OutlineInputBorder(),
+                              ),
+                              validator: (v) => (v == null || v.trim().isEmpty)
+                                  ? 'Obrigatório'
+                                  : null,
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: TextFormField(
+                              controller: lastNameController,
+                              decoration: const InputDecoration(
+                                labelText: 'Último Nome',
+                                border: OutlineInputBorder(),
+                              ),
+                              validator: (v) => (v == null || v.trim().isEmpty)
+                                  ? 'Obrigatório'
+                                  : null,
+                            ),
+                          ),
+                        ],
                       ),
                       const SizedBox(height: 8),
-                      TextFormField(
-                        controller: cpfController,
-                        decoration: const InputDecoration(labelText: 'CPF'),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: TextFormField(
+                              controller: cpfController,
+                              decoration: const InputDecoration(
+                                labelText: 'CPF',
+                                hintText: 'Somente números',
+                                border: OutlineInputBorder(),
+                              ),
+                              keyboardType: TextInputType.number,
+                              validator: (v) => (v == null || v.trim().isEmpty)
+                                  ? 'Obrigatório'
+                                  : null,
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: TextFormField(
+                              controller: telefoneController,
+                              decoration: const InputDecoration(
+                                labelText: 'Telefone',
+                                hintText: '(XX) 9XXXX-XXXX',
+                                border: OutlineInputBorder(),
+                              ),
+                              keyboardType: TextInputType.phone,
+                              validator: (v) => (v == null || v.trim().isEmpty)
+                                  ? 'Obrigatório'
+                                  : null,
+                            ),
+                          ),
+                        ],
                       ),
                       const SizedBox(height: 8),
                       TextFormField(
                         controller: emailController,
-                        decoration: const InputDecoration(labelText: 'E-mail'),
+                        decoration: const InputDecoration(
+                          labelText: 'E-mail',
+                          border: OutlineInputBorder(),
+                        ),
+                        keyboardType: TextInputType.emailAddress,
+                        validator: (v) => (v == null || v.trim().isEmpty)
+                            ? 'Obrigatório'
+                            : null,
+                      ),
+                      const SizedBox(height: 16),
+                      const Divider(),
+                      const SizedBox(height: 8),
+                      const Text(
+                        'Perfil',
+                        style: TextStyle(fontWeight: FontWeight.w600),
                       ),
                       const SizedBox(height: 8),
                       DropdownButtonFormField<UserRole>(
                         value: selectedRole,
                         decoration: const InputDecoration(
                           labelText: 'Tipo de Usuário',
+                          border: OutlineInputBorder(),
                         ),
                         items: UserRole.values.map((role) {
                           return DropdownMenuItem(
@@ -941,37 +1084,61 @@ class _AdminDashboardState extends State<AdminDashboard>
                           }
                         },
                       ),
-                      const SizedBox(height: 16),
-
-                      // --- CAMPOS DINÂMICOS APARECEM AQUI ---
-
-                      // Campo de Clínica (aparece para Secretária e Médico)
-                      if (selectedRole == UserRole.secretaria ||
-                          selectedRole == UserRole.medico) ...[
-                        TextFormField(
-                          controller: clinicaIdController,
-                          decoration: const InputDecoration(
-                            labelText: 'ID da Clínica',
-                          ),
-                          keyboardType: TextInputType.number,
-                        ),
-
-                        // Campos de Médico (aparecem apenas para Médico)
-                      ],
+                      // Campos exclusivos para Médico
                       if (selectedRole == UserRole.medico) ...[
-                        const SizedBox(height: 8),
-                        TextFormField(
-                          controller: crmController,
-                          decoration: const InputDecoration(labelText: 'CRM'),
-                        ),
-                        const SizedBox(height: 8),
-                        TextFormField(
-                          controller: especialidadeController,
-                          decoration: const InputDecoration(
-                            labelText: 'Especialidade',
-                          ),
+                        const SizedBox(height: 12),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: TextFormField(
+                                controller: crmController,
+                                decoration: const InputDecoration(
+                                  labelText: 'CRM',
+                                  border: OutlineInputBorder(),
+                                ),
+                                validator: (v) =>
+                                    (selectedRole == UserRole.medico &&
+                                        (v == null || v.trim().isEmpty))
+                                    ? 'Obrigatório para Médico'
+                                    : null,
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: TextFormField(
+                                controller: especialidadeController,
+                                decoration: const InputDecoration(
+                                  labelText: 'Especialidade',
+                                  border: OutlineInputBorder(),
+                                ),
+                                validator: (v) =>
+                                    (selectedRole == UserRole.medico &&
+                                        (v == null || v.trim().isEmpty))
+                                    ? 'Obrigatório para Médico'
+                                    : null,
+                              ),
+                            ),
+                          ],
                         ),
                       ],
+                      const SizedBox(height: 8),
+                      // Observação sobre a clínica
+                      Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: Colors.blueGrey.withOpacity(0.05),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Text(
+                          _clinicaId != null
+                              ? 'Usuário será associado à clínica deste administrador (ID: $_clinicaId).'
+                              : 'Clínica do administrador não identificada. Faça login novamente se necessário.',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.grey[700],
+                          ),
+                        ),
+                      ),
                     ],
                   ),
                 ),
@@ -985,38 +1152,35 @@ class _AdminDashboardState extends State<AdminDashboard>
                   onPressed: isDialogLoading
                       ? null
                       : () async {
-                          // A validação continua a mesma
-                          if (!(formKey.currentState?.validate() ?? false))
+                          if (!(formKey.currentState?.validate() ?? false)) {
                             return;
-
+                          }
                           setDialogState(() => isDialogLoading = true);
-
                           try {
                             final accessToken = await _storage.read(
                               key: 'access_token',
                             );
-                            if (accessToken == null)
+                            if (accessToken == null) {
                               throw Exception('Token não encontrado');
+                            }
 
-                            // --- MONTAGEM DINÂMICA DO JSON ---
+                            // Monta o payload (sem clinica_id: backend usa token)
                             final Map<String, dynamic> userData = {
-                              "cpf": cpfController.text,
-                              "email": emailController.text,
-                              "first_name": firstNameController.text,
-                              "last_name": lastNameController.text,
+                              "cpf": cpfController.text.trim(),
+                              "email": emailController.text.trim(),
+                              "first_name": firstNameController.text.trim(),
+                              "last_name": lastNameController.text.trim(),
                               "user_type": selectedRole.name.toUpperCase(),
+                              "telefone": telefoneController.text
+                                  .trim(), // NOVO
                             };
 
-                            if (selectedRole == UserRole.secretaria ||
-                                selectedRole == UserRole.medico) {
-                              userData['clinica_id'] = int.tryParse(
-                                clinicaIdController.text,
-                              );
-                            }
                             if (selectedRole == UserRole.medico) {
-                              userData['crm'] = crmController.text;
+                              userData['crm'] = crmController.text.trim();
                               userData['especialidade'] =
-                                  especialidadeController.text.toUpperCase();
+                                  especialidadeController.text
+                                      .trim()
+                                      .toUpperCase();
                             }
 
                             final response = await _apiService.createClinicUser(
@@ -1033,9 +1197,11 @@ class _AdminDashboardState extends State<AdminDashboard>
                                   backgroundColor: Colors.green,
                                 ),
                               );
-                              _loadInitialData(); // Atualiza a lista de usuários
+                              _loadInitialData();
                             } else {
-                              final error = (utf8.decode(response.bodyBytes),);
+                              final error = utf8
+                                  .decode(response.bodyBytes)
+                                  .toString();
                               throw Exception('Falha ao criar usuário: $error');
                             }
                           } catch (e) {
@@ -1047,8 +1213,9 @@ class _AdminDashboardState extends State<AdminDashboard>
                               ),
                             );
                           } finally {
-                            if (mounted)
+                            if (mounted) {
                               setDialogState(() => isDialogLoading = false);
+                            }
                           }
                         },
                   child: isDialogLoading

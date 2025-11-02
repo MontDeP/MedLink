@@ -27,7 +27,10 @@ class ApiService {
       final response = await http.post(
         url,
         headers: {"Content-Type": "application/json"},
-        body: jsonEncode({"cpf": cpf, "password": password}), // Envia CPF e senha
+        body: jsonEncode({
+          "cpf": cpf,
+          "password": password,
+        }), // Envia CPF e senha
       );
 
       if (response.statusCode == 200) {
@@ -51,7 +54,10 @@ class ApiService {
       }
     } catch (e) {
       debugPrint('Erro na chamada de login: $e');
-      return {'success': false, 'error': e.toString()}; // Retorna falha de conexão/geral
+      return {
+        'success': false,
+        'error': e.toString(),
+      }; // Retorna falha de conexão/geral
     }
   }
 
@@ -71,7 +77,7 @@ class ApiService {
     }
   }
 
-  // --- MÉTODOS DE RECUPERAÇÃO DE SENHA ---
+  // --- MÉTODOS DE RECUPERAÇÃO DE SENHA (versão única e correta) ---
 
   Future<Map<String, dynamic>> requestPasswordReset(String email) async {
     final url = Uri.parse('$baseUrl/api/users/request-password-reset/');
@@ -82,23 +88,39 @@ class ApiService {
         body: json.encode({'email': email}),
       );
       // ... (lógica de tratamento de sucesso/erro) ...
-        if (response.statusCode == 200) {
-            return {'success': true, 'message': 'E-mail de recuperação enviado.'};
-        } else {
-            try {
-              final responseBody = json.decode(utf8.decode(response.bodyBytes));
-              return {'success': false, 'message': responseBody['error'] ?? 'E-mail não encontrado ou inválido.'};
-            } catch (e) {
-              return {'success': false, 'message': 'Erro ao processar resposta do servidor. Status: ${response.statusCode}'};
-            }
+      if (response.statusCode == 200) {
+        return {'success': true, 'message': 'E-mail de recuperação enviado.'};
+      } else {
+        try {
+          final responseBody = json.decode(utf8.decode(response.bodyBytes));
+          return {
+            'success': false,
+            'message':
+                responseBody['error'] ?? 'E-mail não encontrado ou inválido.',
+          };
+        } catch (e) {
+          return {
+            'success': false,
+            'message':
+                'Erro ao processar resposta do servidor. Status: ${response.statusCode}',
+          };
         }
+      }
     } catch (e) {
       debugPrint('Erro de conexão em requestPasswordReset: $e');
-      return {'success': false, 'message': 'Não foi possível conectar ao servidor. Verifique sua internet.'};
+      return {
+        'success': false,
+        'message':
+            'Não foi possível conectar ao servidor. Verifique sua internet.',
+      };
     }
   }
 
-  Future<Map<String, dynamic>> confirmPasswordReset(String uid, String token, String password) async {
+  Future<Map<String, dynamic>> confirmPasswordReset(
+    String uid,
+    String token,
+    String password,
+  ) async {
     final url = Uri.parse('$baseUrl/api/users/reset-password-confirm/');
     try {
       final response = await http.post(
@@ -123,35 +145,50 @@ class ApiService {
           }
           return {'success': false, 'message': errorMessage};
         } catch (e) {
-          return {'success': false, 'message': 'Erro no servidor. Status: ${response.statusCode}'};
+          return {
+            'success': false,
+            'message': 'Erro no servidor. Status: ${response.statusCode}',
+          };
         }
       }
     } catch (e) {
       debugPrint('Erro de conexão em confirmPasswordReset: $e');
-      return {'success': false, 'message': 'Não foi possível conectar ao servidor.'};
+      return {
+        'success': false,
+        'message': 'Não foi possível conectar ao servidor.',
+      };
     }
   }
 
-  Future<Map<String, dynamic>> createPasswordConfirm(String uid, String token, String password) async {
-      final url = Uri.parse('$baseUrl/api/users/create-password-confirm/');
-      try {
-        final response = await http.post(
-            url,
-            headers: {'Content-Type': 'application/json'},
-            body: json.encode({'uid': uid, 'token': token, 'password': password}),
-        );
-        if (response.statusCode == 200) {
-            return {'success': true, 'message': 'Senha definida com sucesso.'};
-        } else {
-            final errorData = jsonDecode(utf8.decode(response.bodyBytes));
-            return {'success': false, 'message': errorData['error'] ?? 'Link inválido ou expirado'};
-        }
-      } catch (e) {
-         debugPrint('Erro de conexão em createPasswordConfirm: $e');
-         return {'success': false, 'message': 'Não foi possível conectar ao servidor.'};
+  Future<Map<String, dynamic>> createPasswordConfirm(
+    String uid,
+    String token,
+    String password,
+  ) async {
+    final url = Uri.parse('$baseUrl/api/users/create-password-confirm/');
+    try {
+      final response = await http.post(
+        url,
+        headers: {'Content-Type': 'application/json'},
+        body: json.encode({'uid': uid, 'token': token, 'password': password}),
+      );
+      if (response.statusCode == 200) {
+        return {'success': true, 'message': 'Senha definida com sucesso.'};
+      } else {
+        final errorData = jsonDecode(utf8.decode(response.bodyBytes));
+        return {
+          'success': false,
+          'message': errorData['error'] ?? 'Link inválido ou expirado',
+        };
       }
+    } catch (e) {
+      debugPrint('Erro de conexão em createPasswordConfirm: $e');
+      return {
+        'success': false,
+        'message': 'Não foi possível conectar ao servidor.',
+      };
+    }
   }
-
 
   // --- MÉTODOS PARA PACIENTES ---
 
@@ -190,18 +227,25 @@ class ApiService {
     );
 
     if (response.statusCode == 200) {
-      final Map<String, dynamic> data = json.decode(utf8.decode(response.bodyBytes));
+      final Map<String, dynamic> data = json.decode(
+        utf8.decode(response.bodyBytes),
+      );
       return DashboardData.fromJson(data); // Usa o factory do modelo
     } else {
-      debugPrint('Falha no Dashboard Paciente: ${response.statusCode} | ${response.body}');
+      debugPrint(
+        'Falha no Dashboard Paciente: ${response.statusCode} | ${response.body}',
+      );
       throw Exception('Falha ao carregar dados do dashboard do paciente');
     }
   }
 
   // Busca o perfil completo do paciente logado
   Future<Map<String, dynamic>> getPacienteProfile() async {
-    final url = Uri.parse("$baseUrl/api/pacientes/profile/"); // Endpoint do perfil
-    if (_accessToken == null) throw Exception('Token de acesso não encontrado.');
+    final url = Uri.parse(
+      "$baseUrl/api/pacientes/profile/",
+    ); // Endpoint do perfil
+    if (_accessToken == null)
+      throw Exception('Token de acesso não encontrado.');
 
     final response = await http.get(
       url,
@@ -212,18 +256,24 @@ class ApiService {
     );
 
     if (response.statusCode == 200) {
-      return json.decode(utf8.decode(response.bodyBytes)); // Retorna o JSON do perfil
+      return json.decode(
+        utf8.decode(response.bodyBytes),
+      ); // Retorna o JSON do perfil
     } else {
       throw Exception('Falha ao carregar perfil: ${response.statusCode}');
     }
   }
 
   // Atualiza o perfil do paciente logado
-  Future<Map<String, dynamic>> updatePacienteProfile(Map<String, dynamic> profileData) async {
+  Future<Map<String, dynamic>> updatePacienteProfile(
+    Map<String, dynamic> profileData,
+  ) async {
     final url = Uri.parse("$baseUrl/api/pacientes/profile/");
-    if (_accessToken == null) throw Exception('Token de acesso não encontrado.');
+    if (_accessToken == null)
+      throw Exception('Token de acesso não encontrado.');
 
-    final response = await http.patch( // Usa PATCH para atualização parcial
+    final response = await http.patch(
+      // Usa PATCH para atualização parcial
       url,
       headers: {
         "Content-Type": "application/json",
@@ -233,30 +283,42 @@ class ApiService {
     );
 
     if (response.statusCode == 200) {
-      return json.decode(utf8.decode(response.bodyBytes)); // Retorna o perfil atualizado
+      return json.decode(
+        utf8.decode(response.bodyBytes),
+      ); // Retorna o perfil atualizado
     } else {
-      debugPrint('Erro ao atualizar perfil (${response.statusCode}): ${response.body}');
+      debugPrint(
+        'Erro ao atualizar perfil (${response.statusCode}): ${response.body}',
+      );
       throw Exception('Falha ao atualizar perfil');
     }
   }
+
   Future<List<ProximaConsulta>> getPacienteConsultasPendentes() async {
     // 1. Chama o endpoint do dashboard que JÁ FUNCIONA
-    final dashboardData = await fetchDashboardData(); 
-    
+    final dashboardData = await fetchDashboardData();
+
     // 2. Filtra a lista 'todasConsultas'
     return dashboardData.todasConsultas.where((c) {
-      bool isPendenteOuConfirmada = (c.status.toLowerCase() == 'pendente' || c.status.toLowerCase() == 'confirmada');
+      bool isPendenteOuConfirmada =
+          (c.status.toLowerCase() == 'pendente' ||
+          c.status.toLowerCase() == 'confirmada');
       // Usamos c.data (do ProximaConsulta) ao invés de c.horario
-      bool isFutura = c.data.isAfter(DateTime.now()); 
+      bool isFutura = c.data.isAfter(DateTime.now());
       return isPendenteOuConfirmada && isFutura;
     }).toList();
   }
 
   /// Permite ao paciente remarcar uma consulta existente.
   /// (Este método estava correto e é mantido)
-  Future<bool> remarcarConsultaPaciente(int consultaId, DateTime novaDataHora) async {
+  Future<bool> remarcarConsultaPaciente(
+    int consultaId,
+    DateTime novaDataHora,
+  ) async {
     // ATENÇÃO: Você precisará criar este endpoint no seu backend!
-    final url = Uri.parse("$baseUrl/api/agendamentos/$consultaId/paciente-remarcar/");
+    final url = Uri.parse(
+      "$baseUrl/api/agendamentos/$consultaId/paciente-remarcar/",
+    );
     if (_accessToken == null) throw Exception('Token não encontrado.');
 
     final response = await http.patch(
@@ -265,16 +327,18 @@ class ApiService {
         "Content-Type": "application/json",
         "Authorization": "Bearer $_accessToken",
       },
-      body: jsonEncode({
-        'data_hora': novaDataHora.toIso8601String(),
-      }),
+      body: jsonEncode({'data_hora': novaDataHora.toIso8601String()}),
     );
-    
+
     // Sucesso se for 200 OK
     return response.statusCode == 200;
   }
 
-  Future<bool> pacienteMarcarConsulta(String especialidade, String medico, DateTime dataHora) async {
+  Future<bool> pacienteMarcarConsulta(
+    String especialidade,
+    String medico,
+    DateTime dataHora,
+  ) async {
     // Endpoint de exemplo: /api/agendamentos/paciente-marcar/
     final url = Uri.parse("$baseUrl/api/agendamentos/paciente-marcar/");
     if (_accessToken == null) throw Exception('Token não encontrado.');
@@ -286,55 +350,64 @@ class ApiService {
         "Authorization": "Bearer $_accessToken",
       },
       body: jsonEncode({
-        'especialidade_nome': especialidade, // O backend precisará buscar pelo nome
-        'medico_nome': medico,       // O backend precisará buscar pelo nome
+        'especialidade_nome':
+            especialidade, // O backend precisará buscar pelo nome
+        'medico_nome': medico, // O backend precisará buscar pelo nome
         'data_hora': dataHora.toIso8601String(),
       }),
     );
-    
+
     // 201 Created é o código de sucesso para um POST (criação)
     return response.statusCode == 201;
   }
-  
+
   // Busca lista de pacientes (usado pela secretária e admin)
   Future<List<Patient>> getPatients(String accessToken) async {
     final url = Uri.parse("$baseUrl/api/pacientes/");
-     final response = await http.get(
+    final response = await http.get(
       url,
       headers: {'Authorization': 'Bearer $accessToken'},
     );
     // ... (lógica de tratamento de sucesso/erro) ...
-     if (response.statusCode == 200) {
+    if (response.statusCode == 200) {
       if (response.body.isEmpty || response.body == "[]") return [];
-      final List<dynamic> jsonList = json.decode(utf8.decode(response.bodyBytes));
+      final List<dynamic> jsonList = json.decode(
+        utf8.decode(response.bodyBytes),
+      );
       return jsonList.map((json) => Patient.fromJson(json)).toList();
     } else {
-      throw Exception('Falha ao carregar pacientes (Status: ${response.statusCode})');
+      throw Exception(
+        'Falha ao carregar pacientes (Status: ${response.statusCode})',
+      );
     }
   }
 
-   // Cria um novo paciente (usado pela secretária)
+  // Cria um novo paciente (usado pela secretária)
   Future<http.Response> createPatient(
     Map<String, dynamic> patientData,
     String accessToken,
   ) async {
-    final url = Uri.parse("$baseUrl/api/pacientes/register/"); // Reutiliza endpoint de registro
+    final url = Uri.parse(
+      "$baseUrl/api/pacientes/register/",
+    ); // Reutiliza endpoint de registro
     return await http.post(
       url,
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': 'Bearer $accessToken', // Secretária precisa estar autenticada
+        'Authorization':
+            'Bearer $accessToken', // Secretária precisa estar autenticada
       },
       body: jsonEncode(patientData),
     );
   }
 
-
   // --- MÉTODOS PARA MÉDICOS ---
 
   // Busca pacientes agendados para o médico logado HOJE
   Future<List<Paciente>> getPacientesDoDia() async {
-    final url = Uri.parse("$baseUrl/api/pacientes/hoje/"); // Endpoint específico
+    final url = Uri.parse(
+      "$baseUrl/api/pacientes/hoje/",
+    ); // Endpoint específico
     if (_accessToken == null) throw Exception('Token não encontrado.');
 
     final response = await http.get(
@@ -350,12 +423,16 @@ class ApiService {
       // Usa o modelo Paciente (que inclui detalhes da consulta de hoje)
       return body.map((e) => Paciente.fromJson(e)).toList();
     } else {
-      throw Exception('Falha ao carregar pacientes do dia: ${response.statusCode}');
+      throw Exception(
+        'Falha ao carregar pacientes do dia: ${response.statusCode}',
+      );
     }
   }
 
-   // Busca o histórico de consultas de um paciente específico PARA o médico logado
-  Future<List<consultas_model.Consulta>> getHistoricoConsultas(int pacienteId) async {
+  // Busca o histórico de consultas de um paciente específico PARA o médico logado
+  Future<List<consultas_model.Consulta>> getHistoricoConsultas(
+    int pacienteId,
+  ) async {
     final url = Uri.parse("$baseUrl/api/pacientes/$pacienteId/historico/");
     if (_accessToken == null) throw Exception('Token não encontrado.');
 
@@ -369,15 +446,22 @@ class ApiService {
 
     if (response.statusCode == 200) {
       final List<dynamic> body = jsonDecode(utf8.decode(response.bodyBytes));
-      return body.map((json) => consultas_model.Consulta.fromJson(json)).toList();
+      return body
+          .map((json) => consultas_model.Consulta.fromJson(json))
+          .toList();
     } else {
       throw Exception('Falha ao carregar o histórico: ${response.statusCode}');
     }
   }
 
   // Busca a agenda do médico logado para um mês/ano específico
-  Future<Map<String, List<dynamic>>> getMedicoAgenda(int year, int month) async {
-    final url = Uri.parse("$baseUrl/api/medicos/agenda/?year=$year&month=$month");
+  Future<Map<String, List<dynamic>>> getMedicoAgenda(
+    int year,
+    int month,
+  ) async {
+    final url = Uri.parse(
+      "$baseUrl/api/medicos/agenda/?year=$year&month=$month",
+    );
     if (_accessToken == null) throw Exception('Token não encontrado.');
 
     final response = await http.get(
@@ -389,7 +473,9 @@ class ApiService {
     );
 
     if (response.statusCode == 200) {
-      final Map<String, dynamic> body = jsonDecode(utf8.decode(response.bodyBytes));
+      final Map<String, dynamic> body = jsonDecode(
+        utf8.decode(response.bodyBytes),
+      );
       // A API retorna chave como "YYYY-MM-DD", o front trata
       return body.map((key, value) => MapEntry(key, value as List<dynamic>));
     } else {
@@ -400,20 +486,23 @@ class ApiService {
   // Busca lista de médicos (usado pela secretária e admin)
   Future<List<Doctor>> getDoctors(String accessToken) async {
     final url = Uri.parse("$baseUrl/api/medicos/");
-     final response = await http.get(
+    final response = await http.get(
       url,
       headers: {'Authorization': 'Bearer $accessToken'},
     );
-     // ... (lógica de tratamento de sucesso/erro) ...
-     if (response.statusCode == 200) {
+    // ... (lógica de tratamento de sucesso/erro) ...
+    if (response.statusCode == 200) {
       if (response.body.isEmpty || response.body == "[]") return [];
-      final List<dynamic> jsonList = json.decode(utf8.decode(response.bodyBytes));
+      final List<dynamic> jsonList = json.decode(
+        utf8.decode(response.bodyBytes),
+      );
       return jsonList.map((json) => Doctor.fromJson(json)).toList();
     } else {
-      throw Exception('Falha ao carregar médicos (Status: ${response.statusCode})');
+      throw Exception(
+        'Falha ao carregar médicos (Status: ${response.statusCode})',
+      );
     }
   }
-
 
   // --- MÉTODOS PARA CONSULTAS / AGENDAMENTOS ---
 
@@ -442,7 +531,8 @@ class ApiService {
     final url = Uri.parse("$baseUrl/api/agendamentos/$consultaId/anotacao/");
     if (_accessToken == null) throw Exception('Token não encontrado.');
 
-    final response = await http.post( // Endpoint usa POST para criar/atualizar
+    final response = await http.post(
+      // Endpoint usa POST para criar/atualizar
       url,
       headers: {
         "Content-Type": "application/json",
@@ -457,12 +547,13 @@ class ApiService {
     }
   }
 
-   // Finaliza uma consulta (médico)
+  // Finaliza uma consulta (médico)
   Future<bool> finalizarConsulta(int consultaId, String conteudo) async {
     final url = Uri.parse("$baseUrl/api/agendamentos/$consultaId/finalizar/");
     if (_accessToken == null) throw Exception('Token não encontrado.');
 
-    final response = await http.post( // Endpoint de finalização
+    final response = await http.post(
+      // Endpoint de finalização
       url,
       headers: {
         "Content-Type": "application/json",
@@ -475,7 +566,10 @@ class ApiService {
   }
 
   // Cria um novo agendamento (secretária)
-  Future<http.Response> createAppointment(Appointment appointment, String accessToken) async {
+  Future<http.Response> createAppointment(
+    Appointment appointment,
+    String accessToken,
+  ) async {
     final url = Uri.parse("$baseUrl/api/agendamentos/");
     return await http.post(
       url,
@@ -483,7 +577,9 @@ class ApiService {
         'Content-Type': 'application/json',
         'Authorization': 'Bearer $accessToken',
       },
-      body: jsonEncode(appointment.toJson()), // Usa o toJson do modelo Appointment
+      body: jsonEncode(
+        appointment.toJson(),
+      ), // Usa o toJson do modelo Appointment
     );
   }
 
@@ -495,28 +591,45 @@ class ApiService {
       headers: {'Authorization': 'Bearer $accessToken'},
     );
     // ... (lógica de tratamento de sucesso/erro) ...
-     if (response.statusCode == 200) {
+    if (response.statusCode == 200) {
       if (response.body.isEmpty || response.body == "[]") return [];
-      final List<dynamic> jsonList = json.decode(utf8.decode(response.bodyBytes));
+      final List<dynamic> jsonList = json.decode(
+        utf8.decode(response.bodyBytes),
+      );
       return jsonList.map((json) => Appointment.fromJson(json)).toList();
     } else {
-      throw Exception('Falha ao carregar agendamentos (Status: ${response.statusCode})');
+      throw Exception(
+        'Falha ao carregar agendamentos (Status: ${response.statusCode})',
+      );
     }
   }
 
   // Confirma um agendamento (secretária)
-  Future<http.Response> confirmAppointment(int appointmentId, String accessToken) async {
-    final url = Uri.parse("$baseUrl/api/secretarias/consultas/$appointmentId/confirmar/");
-    return await http.patch( // Usa PATCH para mudar o status
+  Future<http.Response> confirmAppointment(
+    int appointmentId,
+    String accessToken,
+  ) async {
+    final url = Uri.parse(
+      "$baseUrl/api/secretarias/consultas/$appointmentId/confirmar/",
+    );
+    return await http.patch(
+      // Usa PATCH para mudar o status
       url,
       headers: {'Authorization': 'Bearer $accessToken'},
     );
   }
 
   // Cancela um agendamento (secretária)
-  Future<http.Response> cancelAppointment(int appointmentId, String reason, String accessToken) async {
-    final url = Uri.parse("$baseUrl/api/secretarias/consultas/$appointmentId/cancelar/");
-    return await http.patch( // Usa PATCH
+  Future<http.Response> cancelAppointment(
+    int appointmentId,
+    String reason,
+    String accessToken,
+  ) async {
+    final url = Uri.parse(
+      "$baseUrl/api/secretarias/consultas/$appointmentId/cancelar/",
+    );
+    return await http.patch(
+      // Usa PATCH
       url,
       headers: {
         'Content-Type': 'application/json',
@@ -527,16 +640,23 @@ class ApiService {
   }
 
   // Atualiza (remarca) um agendamento (secretária)
-  Future<http.Response> updateAppointment(int appointmentId, DateTime newDateTime, String accessToken) async {
+  Future<http.Response> updateAppointment(
+    int appointmentId,
+    DateTime newDateTime,
+    String accessToken,
+  ) async {
     // Atenção: O endpoint correto pode ser /api/agendamentos/<id>/ ou um específico da secretária
     final url = Uri.parse("$baseUrl/api/agendamentos/$appointmentId/");
-    return await http.put( // Usamos PUT ou PATCH dependendo da API
+    return await http.put(
+      // Usamos PUT ou PATCH dependendo da API
       url,
       headers: {
         'Content-Type': 'application/json',
         'Authorization': 'Bearer $accessToken',
       },
-      body: jsonEncode({'data_hora': newDateTime.toIso8601String()}), // Envia a nova data/hora
+      body: jsonEncode({
+        'data_hora': newDateTime.toIso8601String(),
+      }), // Envia a nova data/hora
     );
   }
 
@@ -545,16 +665,23 @@ class ApiService {
   // Busca estatísticas do dashboard da secretária
   Future<DashboardStats> getDashboardStats(String accessToken) async {
     final url = Uri.parse("$baseUrl/api/secretarias/dashboard/stats/");
-     final response = await http.get(
+    final response = await http.get(
       url,
       headers: {'Authorization': 'Bearer $accessToken'},
     );
-     // ... (lógica de tratamento de sucesso/erro) ...
-      if (response.statusCode == 200) {
+    // ... (lógica de tratamento de sucesso/erro) ...
+    if (response.statusCode == 200) {
       if (response.body.isEmpty || response.body == "{}") {
-        return DashboardStats(today: 0, confirmed: 0, pending: 0, totalMonth: 0);
+        return DashboardStats(
+          today: 0,
+          confirmed: 0,
+          pending: 0,
+          totalMonth: 0,
+        );
       }
-      return DashboardStats.fromJson(json.decode(utf8.decode(response.bodyBytes)));
+      return DashboardStats.fromJson(
+        json.decode(utf8.decode(response.bodyBytes)),
+      );
     } else {
       throw Exception('Falha ao carregar estatísticas do dashboard.');
     }
@@ -565,16 +692,21 @@ class ApiService {
   // Busca todos os usuários da clínica (médicos, secretárias, etc.)
   Future<List<AdminUser>> getClinicUsers(String accessToken) async {
     final url = Uri.parse("$baseUrl/api/admin/users/");
-     final response = await http.get(
+
+    final response = await http.get(
       url,
       headers: {'Authorization': 'Bearer $accessToken'},
     );
-     // ... (lógica de tratamento de sucesso/erro) ...
+
     if (response.statusCode == 200) {
-      final List<dynamic> jsonList = json.decode(utf8.decode(response.bodyBytes));
+      final List<dynamic> jsonList = json.decode(
+        utf8.decode(response.bodyBytes),
+      );
       return jsonList.map((json) => AdminUser.fromJson(json)).toList();
     } else {
-      throw Exception('Falha ao carregar usuários (Status: ${response.statusCode})');
+      throw Exception(
+        'Falha ao carregar usuários (Status: ${response.statusCode})',
+      );
     }
   }
 
@@ -594,35 +726,120 @@ class ApiService {
   }
 
   // Cria um novo usuário da clínica (médico, secretária)
-  Future<http.Response> createClinicUser(Map<String, dynamic> userData, String accessToken) async {
+  Future<http.Response> createClinicUser(
+    Map<String, dynamic> userData,
+    String accessToken,
+  ) async {
     final url = Uri.parse("$baseUrl/api/admin/users/");
+
+    // Normaliza o payload para compatibilidade com o backend
+    final body = Map<String, dynamic>.from(userData);
+    final rawType = (body['user_type'] ?? body['tipo'] ?? '').toString();
+    final userType = rawType.toUpperCase();
+
+    // Detecta clinicId nas várias chaves
+    dynamic clinicIdRaw =
+        body['clinica_id'] ??
+        body['clinic_id'] ??
+        body['clinicaId'] ??
+        body['clinica'];
+
+    // Fallback: usa clinica do token se não vier no body
+    if (clinicIdRaw == null) {
+      final payload = _decodeJwtPayload(accessToken);
+      final tokenClinicId = payload?['clinica_id'] ?? payload?['clinicaId'];
+      if (tokenClinicId != null) clinicIdRaw = tokenClinicId;
+    }
+
+    if (clinicIdRaw != null) {
+      final clinicIdParsed =
+          int.tryParse(clinicIdRaw.toString()) ?? clinicIdRaw;
+
+      if (userType == 'MEDICO') {
+        // Medico usa M2M "clinicas"
+        body['clinicas'] = [clinicIdParsed];
+        body.remove('clinica'); // evita conflito
+      } else if (userType == 'SECRETARIA' ||
+          userType == 'PACIENTE' ||
+          userType == 'ADMIN') {
+        // Demais perfis usam FK "clinica"
+        body['clinica'] = clinicIdParsed;
+        body.remove('clinicas'); // evita conflito
+      }
+      // Remove aliases para evitar kwargs inesperados no backend
+      body.remove('clinica_id');
+      body.remove('clinic_id');
+      body.remove('clinicaId');
+    }
+
     return await http.post(
       url,
       headers: {
         'Content-Type': 'application/json',
         'Authorization': 'Bearer $accessToken',
       },
-      body: jsonEncode(userData),
+      body: jsonEncode(body),
     );
   }
 
-   // Atualiza dados de um usuário (nome, email, tipo, status)
-  Future<http.Response> updateUser(String userId, Map<String, dynamic> data, String accessToken) async {
+  // Atualiza dados de um usuário (nome, email, tipo, status)
+  Future<http.Response> updateUser(
+    String userId,
+    Map<String, dynamic> data,
+    String accessToken,
+  ) async {
     final url = Uri.parse("$baseUrl/api/admin/users/$userId/");
-    return await http.patch( // PATCH para atualização parcial
+
+    // Normalização também no PATCH (+ fallback pelo token)
+    final body = Map<String, dynamic>.from(data);
+    final rawType = (body['user_type'] ?? body['tipo'] ?? '').toString();
+    final userType = rawType.toUpperCase();
+
+    dynamic clinicIdRaw =
+        body['clinica_id'] ??
+        body['clinic_id'] ??
+        body['clinicaId'] ??
+        body['clinica'];
+
+    if (clinicIdRaw == null) {
+      final payload = _decodeJwtPayload(accessToken);
+      final tokenClinicId = payload?['clinica_id'] ?? payload?['clinicaId'];
+      if (tokenClinicId != null) clinicIdRaw = tokenClinicId;
+    }
+
+    if (clinicIdRaw != null) {
+      final clinicIdParsed =
+          int.tryParse(clinicIdRaw.toString()) ?? clinicIdRaw;
+
+      if (userType == 'MEDICO') {
+        body['clinicas'] = [clinicIdParsed];
+        body.remove('clinica');
+      } else {
+        body['clinica'] = clinicIdParsed;
+        body.remove('clinicas');
+      }
+      body.remove('clinica_id');
+      body.remove('clinic_id');
+      body.remove('clinicaId');
+    }
+
+    return await http.patch(
       url,
       headers: {
         'Content-Type': 'application/json',
         'Authorization': 'Bearer $accessToken',
       },
-      body: jsonEncode(data),
+      body: jsonEncode(body),
     );
   }
 
-  // Ativa/desativa um usuário
-  Future<http.Response> updateUserStatus(String userId, bool isActive, String accessToken) async {
+  Future<http.Response> updateUserStatus(
+    String userId,
+    bool isActive,
+    String accessToken,
+  ) async {
     final url = Uri.parse("$baseUrl/api/admin/users/$userId/");
-    return await http.patch( // PATCH para mudar apenas 'is_active'
+    return await http.patch(
       url,
       headers: {
         'Content-Type': 'application/json',
@@ -632,30 +849,45 @@ class ApiService {
     );
   }
 
-  // Deleta um usuário
   Future<http.Response> deleteUser(String userId, String accessToken) async {
     final url = Uri.parse("$baseUrl/api/admin/users/$userId/");
-    return await http.delete( // Usa DELETE
+    return await http.delete(
       url,
       headers: {'Authorization': 'Bearer $accessToken'},
     );
   }
 
-  // --- MÉTODO PARA BUSCAR CEP (ViaCEP) ---
-   Future<Address?> fetchAddressFromCep(String cep) async {
-    final cleanedCep = cep.replaceAll(RegExp(r'\D'), ''); // Remove não-dígitos
-    if (cleanedCep.length != 8) return null; // Valida tamanho
+  // Helper: decodifica o payload do JWT (mantenha UMA versão)
+  Map<String, dynamic>? _decodeJwtPayload(String token) {
+    try {
+      final parts = token.split('.');
+      if (parts.length != 3) throw Exception('Token JWT inválido');
+      final payload = parts[1];
+      final normalized = base64Url.normalize(payload);
+      final resp = utf8.decode(base64Url.decode(normalized));
+      final payloadMap = json.decode(resp);
+      return payloadMap;
+    } catch (e) {
+      debugPrint('Erro ao decodificar token: $e');
+      return null;
+    }
+  }
+
+  // --- NOVO MÉTODO: BUSCA ENDEREÇO POR CEP ---
+
+  Future<Address?> fetchAddressFromCep(String cep) async {
+    final cleanedCep = cep.replaceAll(RegExp(r'\D'), '');
+    if (cleanedCep.length != 8) return null;
 
     final url = Uri.parse('https://viacep.com.br/ws/$cleanedCep/json/');
     try {
       final response = await http.get(url);
       if (response.statusCode == 200) {
-        final data = json.decode(response.body);
-        if (data.containsKey('erro') && data['erro'] == true) { // ViaCEP retorna 'erro: true' para CEP inválido
-             debugPrint('ViaCEP retornou erro para o CEP: $cleanedCep');
-             return null;
+        final data = json.decode(utf8.decode(response.bodyBytes));
+        if (data is Map && data['erro'] == true) {
+          return null;
         }
-        return Address.fromJson(data); // Usa o factory do modelo Address
+        return Address.fromJson(data);
       } else {
         debugPrint('Erro ViaCEP (${response.statusCode}): ${response.body}');
         return null;
@@ -666,18 +898,178 @@ class ApiService {
     }
   }
 
+  // --- SUPER ADMIN / ADMIN: Clínicas e Admins ---
 
-} // --- FIM DA CLASSE ApiService ---
+  Future<List<Map<String, dynamic>>> getAllClinics(String accessToken) async {
+    final urls = [
+      Uri.parse("$baseUrl/api/admin/clinicas/"),
+      Uri.parse("$baseUrl/api/clinicas/"),
+    ];
 
+    for (final url in urls) {
+      final resp = await http.get(
+        url,
+        headers: {'Authorization': 'Bearer $accessToken'},
+      );
+      if (resp.statusCode == 200) {
+        final body = utf8.decode(resp.bodyBytes);
+        final decoded = json.decode(body);
+        if (decoded is List) return decoded.cast<Map<String, dynamic>>();
+        if (decoded is Map && decoded['results'] is List) {
+          return (decoded['results'] as List).cast<Map<String, dynamic>>();
+        }
+        return <Map<String, dynamic>>[];
+      }
+      if (resp.statusCode == 403 || resp.statusCode == 404) {
+        // tenta o próximo endpoint
+        continue;
+      }
+      // erro diferente de 403/404: falha direta se for o último
+      if (url == urls.last) {
+        throw Exception(
+          'Falha ao listar clínicas (Status: ${resp.statusCode})',
+        );
+      }
+    }
+    throw Exception('Falha ao listar clínicas.');
+  }
 
-// --- Modelo Address (pode ficar aqui ou em models/address_model.dart) ---
+  Future<List<Map<String, dynamic>>> getAdmins(
+    String accessToken, {
+    String? search,
+  }) async {
+    final base = "$baseUrl/api/admin/users/?user_type=ADMIN";
+    final url = Uri.parse(
+      search == null || search.isEmpty
+          ? base
+          : "$base&search=${Uri.encodeQueryComponent(search)}",
+    );
+    final resp = await http.get(
+      url,
+      headers: {'Authorization': 'Bearer $accessToken'},
+    );
+    if (resp.statusCode == 200) {
+      final List<dynamic> data = json.decode(utf8.decode(resp.bodyBytes));
+      return data.cast<Map<String, dynamic>>();
+    } else {
+      throw Exception(
+        'Falha ao listar administradores (Status: ${resp.statusCode})',
+      );
+    }
+  }
+
+  Future<http.Response> assignClinicAdmin(
+    int clinicId,
+    Map<String, dynamic> payload,
+    String accessToken,
+  ) async {
+    final url = Uri.parse(
+      "$baseUrl/api/admin/clinicas/$clinicId/assign-admin/",
+    );
+    return await http.post(
+      url,
+      headers: {
+        'Authorization': 'Bearer $accessToken',
+        'Content-Type': 'application/json',
+      },
+      body: jsonEncode(payload),
+    );
+    // Espera 200 em sucesso
+  }
+
+  // --- Referências do app de Clínicas ---
+
+  Future<List<Map<String, dynamic>>> getEstados(String accessToken) async {
+    final url = Uri.parse("$baseUrl/api/clinicas/estados/");
+    final resp = await http.get(
+      url,
+      headers: {'Authorization': 'Bearer $accessToken'},
+    );
+    if (resp.statusCode == 200) {
+      final List<dynamic> data = json.decode(utf8.decode(resp.bodyBytes));
+      return data.cast<Map<String, dynamic>>();
+    } else {
+      throw Exception('Falha ao carregar estados (${resp.statusCode})');
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> getCidades(String accessToken) async {
+    final url = Uri.parse("$baseUrl/api/clinicas/cidades/");
+    final resp = await http.get(
+      url,
+      headers: {'Authorization': 'Bearer $accessToken'},
+    );
+    if (resp.statusCode == 200) {
+      final List<dynamic> data = json.decode(utf8.decode(resp.bodyBytes));
+      return data.cast<Map<String, dynamic>>();
+    } else {
+      throw Exception('Falha ao carregar cidades (${resp.statusCode})');
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> getTiposClinica(String accessToken) async {
+    final url = Uri.parse("$baseUrl/api/clinicas/tipos-clinica/");
+    final resp = await http.get(
+      url,
+      headers: {'Authorization': 'Bearer $accessToken'},
+    );
+    if (resp.statusCode == 200) {
+      final List<dynamic> data = json.decode(utf8.decode(resp.bodyBytes));
+      return data.cast<Map<String, dynamic>>();
+    } else {
+      throw Exception(
+        'Falha ao carregar tipos de clínica (${resp.statusCode})',
+      );
+    }
+  }
+
+  Future<http.Response> createClinicOnly(
+    Map<String, dynamic> clinicData,
+    String accessToken,
+  ) async {
+    final url = Uri.parse("$baseUrl/api/clinicas/");
+    return await http.post(
+      url,
+      headers: {
+        'Authorization': 'Bearer $accessToken',
+        'Content-Type': 'application/json',
+      },
+      body: jsonEncode(clinicData),
+    );
+    // Espera 201/200
+  }
+
+  // --- Utilidade: nome da clínica por ID (usado no dashboard) ---
+
+  Future<String?> getClinicName(int clinicaId, String accessToken) async {
+    final url = Uri.parse("$baseUrl/api/clinicas/$clinicaId/");
+    try {
+      final resp = await http.get(
+        url,
+        headers: {'Authorization': 'Bearer $accessToken'},
+      );
+      if (resp.statusCode == 200 && resp.body.isNotEmpty) {
+        final data = json.decode(utf8.decode(resp.bodyBytes));
+        return data['nome_fantasia'] ?? data['nome'] ?? data['name'];
+      } else {
+        debugPrint('getClinicName falhou: ${resp.statusCode} ${resp.body}');
+        return null;
+      }
+    } catch (e) {
+      debugPrint('Erro em getClinicName: $e');
+      return null;
+    }
+  }
+}
+
+// Classe Address (mantenha UMA definição ao final do arquivo)
 class Address {
   final String cep;
-  final String logradouro; // Rua/Avenida
+  final String logradouro;
   final String complemento;
   final String bairro;
-  final String localidade; // Cidade
-  final String uf; // Estado
+  final String localidade;
+  final String uf;
 
   Address({
     required this.cep,

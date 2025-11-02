@@ -12,8 +12,7 @@ from users.permissions import IsMedicoOrSecretaria
 from .serializers import PacienteCreateSerializer, PacienteProfileSerializer
 # --- FIM DA MINHA ADIÇÃO ---
 from agendamentos.serializers import ConsultaSerializer
-from agendamentos.serializers import ConsultaSerializer, DashboardConsultaSerializer
-from users.models import User
+from django.db.models import Q
 
 # View para CRIAR pacientes (Esta classe estava faltando no seu arquivo anterior)
 class PacienteCreateView(generics.CreateAPIView):
@@ -21,11 +20,37 @@ class PacienteCreateView(generics.CreateAPIView):
     serializer_class = PacienteCreateSerializer
     permission_classes = [AllowAny]
 
-# View para LISTAR todos os pacientes (Esta classe também estava faltando)
+# View para LISTAR todos os pacientes (sem alterações)
 class PacienteListView(generics.ListAPIView):
-    queryset = Paciente.objects.select_related('user').all()
     serializer_class = PacienteCreateSerializer
     permission_classes = [IsAuthenticated]
+    
+    def get_queryset(self):
+        user = self.request.user
+
+        # Secretária: vê pacientes da sua clínica + pacientes que já tiveram consultas
+        if user.user_type == 'SECRETARIA' and hasattr(user, 'perfil_secretaria'):
+            clinica = user.perfil_secretaria.clinica
+            return Paciente.objects.filter(
+                Q(clinica=clinica) |  # Pacientes registrados na clínica
+                Q(consultas_agendadas__clinica=clinica)  # Pacientes com consultas
+            ).distinct()
+        
+        # Médico: vê seus pacientes + pacientes das clínicas onde atende
+        elif user.user_type == 'MEDICO' and hasattr(user, 'perfil_medico'):
+            clinicas = user.perfil_medico.clinicas.all()
+            return Paciente.objects.filter(
+                Q(clinica__in=clinicas) |  # Pacientes das clínicas onde atende
+                Q(consultas_agendadas__clinica__in=clinicas) |  # Pacientes com consultas nas clínicas
+                Q(consultas_agendadas__medico=user)  # Pacientes atendidos pelo médico
+            ).distinct()
+        
+        # Admin: vê todos
+        elif user.is_staff or user.is_superuser:
+            return Paciente.objects.all()
+        
+        # Outros: veem nada
+        return Paciente.objects.none()
 
 # View para os PACIENTES DO DIA (sem alterações)
 class PacientesDoDiaAPIView(APIView):

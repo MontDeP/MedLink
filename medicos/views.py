@@ -5,6 +5,8 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
+import logging
+from django.db.models import Q, Exists, OuterRef
 
 from agendamentos.models import Consulta, ConsultaStatusLog
 from agendamentos.serializers import ConsultaSerializer
@@ -12,6 +14,8 @@ from agendamentos.consts import STATUS_CONSULTA_REAGENDAMENTO_SOLICITADO # <-- I
 from users.permissions import IsMedicoUser
 from .models import Medico
 from .serializers import MedicoSerializer
+
+logger = logging.getLogger(__name__)
 
 
 # --- VIEW DA AGENDA (LÓGICA CORRIGIDA) ---
@@ -100,10 +104,48 @@ class SolicitarReagendamentoAPIView(UpdateAPIView):
 
 class MedicoListView(ListAPIView):
     """
-    View para listar todos os médicos ativos.
-    Acessível apenas por usuários autenticados.
+    View para listar médicos, filtrando por clínica quando o usuário é uma secretária.
     """
-    # Filtra para retornar apenas médicos com usuário ativo
-    queryset = Medico.objects.select_related('user').filter(user__is_active=True)
     serializer_class = MedicoSerializer
     permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        user = self.request.user
+
+        if user.user_type == 'SECRETARIA' and hasattr(user, 'perfil_secretaria'):
+            clinica = user.perfil_secretaria.clinica
+
+            # Fallback: inclui médicos que já possuem consultas nessa clínica,
+            # mesmo que o M2M `clinicas` ainda não esteja preenchido.
+            consultas_na_clinica = Exists(
+                Consulta.objects.filter(
+                    medico=OuterRef('user'),
+                    clinica=clinica,
+                )
+            )
+
+            return (
+                Medico.objects
+                .annotate(_has_consulta_na_clinica=consultas_na_clinica)
+                .filter(
+                    Q(clinicas=clinica) | Q(_has_consulta_na_clinica=True)
+                )
+                .select_related('user')
+                .prefetch_related('clinicas')
+                .distinct()
+                .order_by('user__first_name', 'user__last_name')
+            )
+
+        if user.user_type == 'MEDICO' and hasattr(user, 'perfil_medico'):
+            clinicas = user.perfil_medico.clinicas.all()
+            return (Medico.objects
+                    .filter(Q(user=user) | Q(clinicas__in=clinicas))
+                    .select_related('user')
+                    .prefetch_related('clinicas')
+                    .distinct()
+                    .order_by('user__first_name', 'user__last_name'))
+
+        if user.is_staff or user.is_superuser:
+            return Medico.objects.select_related('user').all().order_by('user__first_name', 'user__last_name')
+
+        return Medico.objects.none()

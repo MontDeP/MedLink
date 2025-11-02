@@ -10,7 +10,6 @@ from rest_framework.permissions import IsAuthenticated
 # Importando os modelos e serializers necessários
 from agendamentos.models import Consulta, ConsultaStatusLog
 from .serializers import DashboardStatsSerializer, ConsultaHojeSerializer
-from .serializers import DashboardStatsSerializer, ConsultaHojeSerializer
 from users.permissions import HasRole
 
 # 1. IMPORTE AS CONSTANTES DE STATUS DO SEU APP DE AGENDAMENTOS
@@ -31,9 +30,19 @@ class DashboardStatsView(APIView):
     def get(self, request):
         today = date.today()
         
-        # O filtro por clínica virá no futuro, por enquanto busca todas do dia
-        consultas_do_dia = Consulta.objects.filter(data_hora__date=today)
-        consultas_do_mes = Consulta.objects.filter(data_hora__year=today.year, data_hora__month=today.month)
+        # Obtém a clínica da secretária logada
+        clinica = request.user.perfil_secretaria.clinica
+        
+        # Filtra as consultas pela clínica
+        consultas_do_dia = Consulta.objects.filter(
+            data_hora__date=today,
+            clinica=clinica
+        )
+        consultas_do_mes = Consulta.objects.filter(
+            data_hora__year=today.year, 
+            data_hora__month=today.month,
+            clinica=clinica
+        )
 
         # Contagens
         stats_data = {
@@ -59,9 +68,13 @@ class ConsultasHojeView(ListAPIView):
     required_roles = ['SECRETARIA']
 
     def get_queryset(self):
-        # Filtra as consultas para retornar apenas as de hoje, ordenadas por hora
         today = date.today()
-        return Consulta.objects.filter(data_hora__date=today).order_by('data_hora')
+        # Filtra as consultas pela clínica da secretária
+        clinica = self.request.user.perfil_secretaria.clinica
+        return Consulta.objects.filter(
+            data_hora__date=today,
+            clinica=clinica
+        ).order_by('data_hora')
 
 
 class ConfirmarConsultaView(APIView):
@@ -74,7 +87,10 @@ class ConfirmarConsultaView(APIView):
 
     def patch(self, request, pk):
         try:
-            consulta = Consulta.objects.get(pk=pk)
+            # Filtra pela clínica da secretária
+            clinica = request.user.perfil_secretaria.clinica
+            consulta = Consulta.objects.get(pk=pk, clinica=clinica)
+            
             consulta.status_atual = 'CONFIRMADA'
             consulta.save()
 
@@ -86,8 +102,10 @@ class ConfirmarConsultaView(APIView):
             )
             return Response({'message': 'Consulta confirmada com sucesso!'}, status=status.HTTP_200_OK)
         except Consulta.DoesNotExist:
-            return Response({'error': 'Consulta não encontrada.'}, status=status.HTTP_404_NOT_FOUND)
-
+            return Response(
+                {'error': 'Consulta não encontrada ou não pertence à sua clínica.'}, 
+                status=status.HTTP_404_NOT_FOUND
+            )
 
 class CancelarConsultaView(APIView):
     """
@@ -100,7 +118,10 @@ class CancelarConsultaView(APIView):
     def patch(self, request, pk):
         motivo = request.data.get('motivo', 'Cancelado pela secretaria')
         try:
-            consulta = Consulta.objects.get(pk=pk)
+            # Filtra pela clínica da secretária
+            clinica = request.user.perfil_secretaria.clinica
+            consulta = Consulta.objects.get(pk=pk, clinica=clinica)
+            
             consulta.status_atual = 'CANCELADA'
             consulta.save()
             
@@ -112,4 +133,7 @@ class CancelarConsultaView(APIView):
             )
             return Response({'message': 'Consulta cancelada com sucesso!'}, status=status.HTTP_200_OK)
         except Consulta.DoesNotExist:
-            return Response({'error': 'Consulta não encontrada.'}, status=status.HTTP_404_NOT_FOUND)
+            return Response(
+                {'error': 'Consulta não encontrada ou não pertence à sua clínica.'}, 
+                status=status.HTTP_404_NOT_FOUND
+            )

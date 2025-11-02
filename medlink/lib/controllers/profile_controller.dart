@@ -51,15 +51,16 @@ class ProfileController extends ChangeNotifier {
   DateTime? get parsedDataNascimento => _parsedDataNascimento;
 
   final _cepMaskFormatter = MaskTextInputFormatter(
-    mask: '#####-###', filter: {"#": RegExp(r'[0-9]')}
+    mask: '#####-###',
+    filter: {"#": RegExp(r'[0-9]')},
   );
   final _phoneMaskFormatter = MaskTextInputFormatter(
-      mask: '(##) #####-####', filter: {"#": RegExp(r'[0-9]')}
+    mask: '(##) #####-####',
+    filter: {"#": RegExp(r'[0-9]')},
   );
-  
+
   MaskTextInputFormatter get cepMaskFormatter => _cepMaskFormatter;
   MaskTextInputFormatter get phoneMaskFormatter => _phoneMaskFormatter;
-
 
   ProfileController() {
     fetchProfile();
@@ -100,7 +101,7 @@ class ProfileController extends ChangeNotifier {
       nomeCompletoController.text = userData['nome_completo'] ?? '';
       cpfController.text = userData['cpf'] ?? '';
       emailController.text = userData['email'] ?? '';
-      
+
       final phoneFromApi = data['telefone'] ?? '';
       telefoneController.text = _phoneMaskFormatter.maskText(phoneFromApi);
 
@@ -108,29 +109,29 @@ class ProfileController extends ChangeNotifier {
       // (Esta lógica foi a que eu te passei na resposta anterior ao refactor)
       final alturaCm = data['altura_cm']?.toString() ?? '';
       final pesoKg = data['peso_kg']; // É 'dynamic' (pode ser String ou num)
-      
+
       alturaController.text = alturaCm;
-      
+
       if (pesoKg != null) {
-          double? pesoDouble;
-          if (pesoKg is num) {
-              // Caso 1: A API manda um número (ex: 78 ou 78.0)
-              pesoDouble = pesoKg.toDouble();
-          } else if (pesoKg is String) {
-              // Caso 2: A API manda um texto (ex: "78.00" ou "78,0")
-              // Trocamos vírgula por ponto e tentamos converter
-              pesoDouble = double.tryParse(pesoKg.replaceAll(',', '.'));
-          }
-          
-          // Se conseguimos converter, formatamos para o padrão BR (com vírgula)
-          if (pesoDouble != null) {
-              pesoController.text = pesoDouble.toStringAsFixed(2);
-          } else {
-              // Se falhar, apenas mostramos o que veio
-              pesoController.text = pesoKg.toString();
-          }
+        double? pesoDouble;
+        if (pesoKg is num) {
+          // Caso 1: A API manda um número (ex: 78 ou 78.0)
+          pesoDouble = pesoKg.toDouble();
+        } else if (pesoKg is String) {
+          // Caso 2: A API manda um texto (ex: "78.00" ou "78,0")
+          // Trocamos vírgula por ponto e tentamos converter
+          pesoDouble = double.tryParse(pesoKg.replaceAll(',', '.'));
+        }
+
+        // Se conseguimos converter, formatamos para o padrão BR (com vírgula)
+        if (pesoDouble != null) {
+          pesoController.text = pesoDouble.toStringAsFixed(2);
+        } else {
+          // Se falhar, apenas mostramos o que veio
+          pesoController.text = pesoKg.toString();
+        }
       } else {
-          pesoController.text = ''; // Se for nulo
+        pesoController.text = ''; // Se for nulo
       }
       // --- FIM DA CORREÇÃO DO ERRO ---
 
@@ -146,7 +147,6 @@ class ProfileController extends ChangeNotifier {
       avRuaController.text = data['av_rua'] ?? '';
       numeroController.text = data['numero'] ?? '';
       infoAdicionaisController.text = data['informacoes_adicionais'] ?? '';
-
     } catch (e) {
       debugPrint("Erro ao buscar perfil: $e");
       _errorMessage = "Erro ao carregar o perfil. Tente novamente.";
@@ -157,52 +157,57 @@ class ProfileController extends ChangeNotifier {
   }
 
   void _updateIdadeEDisplayDataNascimento() {
-      _parsedDataNascimento = null;
-      if (_dataNascimentoApi != null && _dataNascimentoApi!.isNotEmpty) {
-          try {
-              final dataNasc = DateFormat('yyyy-MM-dd').parse(_dataNascimentoApi!);
-              _parsedDataNascimento = dataNasc;
+    _parsedDataNascimento = null;
+    if (_dataNascimentoApi != null && _dataNascimentoApi!.isNotEmpty) {
+      try {
+        final dataNasc = DateFormat('yyyy-MM-dd').parse(_dataNascimentoApi!);
+        _parsedDataNascimento = dataNasc;
 
-              final hoje = DateTime.now();
-              int idade = hoje.year - dataNasc.year;
-              if (hoje.month < dataNasc.month || (hoje.month == dataNasc.month && hoje.day < dataNasc.day)) {
-                  idade--;
-              }
-              idadeController.text = idade >= 0 ? '$idade anos' : '-';
-              dataNascimentoController.text = DateFormat('dd/MM/yyyy').format(dataNasc);
-          } catch (e) {
-              debugPrint("Erro ao parsear data de nascimento '$_dataNascimentoApi': $e");
-              idadeController.text = '-';
-              dataNascimentoController.text = '';
-              _parsedDataNascimento = null;
-          }
-      } else {
-          idadeController.text = '-';
-          dataNascimentoController.text = '';
-          _parsedDataNascimento = null;
+        final hoje = DateTime.now();
+        int idade = hoje.year - dataNasc.year;
+        if (hoje.month < dataNasc.month ||
+            (hoje.month == dataNasc.month && hoje.day < dataNasc.day)) {
+          idade--;
+        }
+        idadeController.text = idade >= 0 ? '$idade anos' : '-';
+        dataNascimentoController.text = DateFormat(
+          'dd/MM/yyyy',
+        ).format(dataNasc);
+      } catch (e) {
+        debugPrint(
+          "Erro ao parsear data de nascimento '$_dataNascimentoApi': $e",
+        );
+        idadeController.text = '-';
+        dataNascimentoController.text = '';
+        _parsedDataNascimento = null;
       }
+    } else {
+      idadeController.text = '-';
+      dataNascimentoController.text = '';
+      _parsedDataNascimento = null;
+    }
   }
 
   void setDataNascimento(DateTime novaData) {
-      _dataNascimentoApi = DateFormat('yyyy-MM-dd').format(novaData);
-      _updateIdadeEDisplayDataNascimento();
-      notifyListeners();
+    _dataNascimentoApi = DateFormat('yyyy-MM-dd').format(novaData);
+    _updateIdadeEDisplayDataNascimento();
+    notifyListeners();
   }
+
   void updateAgeFromTextField() {
     final text = dataNascimentoController.text;
-    
+
     // Verifica se a data está completa (dd/mm/yyyy = 10 chars)
     if (text.length == 10) {
       try {
         // 1. Converte o texto 'dd/MM/yyyy' para um objeto DateTime
         final dataNasc = DateFormat('dd/MM/yyyy').parse(text);
-        
+
         // 2. Chama a função que já temos. Ela vai:
         //    - Atualizar a variável _dataNascimentoApi (para salvar)
         //    - Chamar _updateIdadeEDisplayDataNascimento() (para calcular a idade)
         //    - Chamar notifyListeners() (para atualizar a UI)
         setDataNascimento(dataNasc);
-
       } catch (e) {
         // Se a data for inválida (ex: 99/99/9999)
         debugPrint("Erro ao parsear data digitada: $e");
@@ -213,14 +218,15 @@ class ProfileController extends ChangeNotifier {
       }
     } else if (text.isEmpty) {
       // Se o campo for apagado, limpa a idade
-       _dataNascimentoApi = null;
-       _parsedDataNascimento = null;
-       idadeController.text = '-';
-       notifyListeners();
+      _dataNascimentoApi = null;
+      _parsedDataNascimento = null;
+      idadeController.text = '-';
+      notifyListeners();
     }
     // Se a data estiver incompleta (ex: "12/03/"), não faz nada
     // e espera o usuário terminar de digitar.
   }
+
   void startEditing() {
     _isEditing = true;
     notifyListeners();
@@ -229,10 +235,10 @@ class ProfileController extends ChangeNotifier {
   Future<void> buscarCep() async {
     final cepValue = _cepMaskFormatter.unmaskText(cepController.text);
     if (cepValue.length != 8 || _isCepLoading) {
-       if (cepValue.isNotEmpty && cepValue.length != 8) {
-           _errorMessage = "CEP inválido. Deve conter 8 dígitos.";
-           notifyListeners();
-       }
+      if (cepValue.isNotEmpty && cepValue.length != 8) {
+        _errorMessage = "CEP inválido. Deve conter 8 dígitos.";
+        notifyListeners();
+      }
       return;
     }
     _isCepLoading = true;
@@ -244,7 +250,7 @@ class ProfileController extends ChangeNotifier {
         bairroController.text = address.bairro;
         avRuaController.text = address.logradouro;
         quadraController.text = '';
-         cepController.text = _cepMaskFormatter.maskText(address.cep);
+        cepController.text = _cepMaskFormatter.maskText(address.cep);
       } else {
         _errorMessage = "CEP não encontrado ou inválido.";
         bairroController.text = '';
@@ -254,9 +260,9 @@ class ProfileController extends ChangeNotifier {
     } catch (e) {
       _errorMessage = "Erro ao buscar CEP. Verifique a conexão.";
       debugPrint("Exceção em buscarCep: $e");
-        bairroController.text = '';
-        avRuaController.text = '';
-        quadraController.text = '';
+      bairroController.text = '';
+      avRuaController.text = '';
+      quadraController.text = '';
     } finally {
       _isCepLoading = false;
       notifyListeners();
@@ -285,39 +291,43 @@ class ProfileController extends ChangeNotifier {
 
     final nomeCompletoParts = nomeCompletoController.text.trim().split(' ');
     _firstName = nomeCompletoParts.isNotEmpty ? nomeCompletoParts.first : '';
-    _lastName = nomeCompletoParts.length > 1 ? nomeCompletoParts.sublist(1).join(' ') : '';
+    _lastName = nomeCompletoParts.length > 1
+        ? nomeCompletoParts.sublist(1).join(' ')
+        : '';
     if (_firstName.isEmpty) {
-        _errorMessage = "Por favor, insira pelo menos o primeiro nome.";
-        _isSaving = false;
-        notifyListeners();
-        return false;
+      _errorMessage = "Por favor, insira pelo menos o primeiro nome.";
+      _isSaving = false;
+      notifyListeners();
+      return false;
     }
 
     int? alturaCm = int.tryParse(alturaController.text);
     double? pesoKg = double.tryParse(pesoController.text.replaceAll(',', '.'));
-    String telefoneLimpo = _phoneMaskFormatter.unmaskText(telefoneController.text);
+    String telefoneLimpo = _phoneMaskFormatter.unmaskText(
+      telefoneController.text,
+    );
     String cepLimpo = _cepMaskFormatter.unmaskText(cepController.text);
 
     final Map<String, dynamic> dataToSave = {
-        "user": {
-            "first_name": _firstName,
-            "last_name": _lastName,
-            "email": emailController.text,
-        },
-        "telefone": telefoneLimpo,
-        "altura_cm": alturaCm,
-        "peso_kg": pesoKg,
-        "data_nascimento": _dataNascimentoApi,
-        "tipo_sanguineo": sangueController.text.toUpperCase(),
-        "cep": cepLimpo,
-        "bairro": bairroController.text,
-        "quadra": quadraController.text,
-        "av_rua": avRuaController.text,
-        "numero": numeroController.text,
-        "informacoes_adicionais": infoAdicionaisController.text,
+      "user": {
+        "first_name": _firstName,
+        "last_name": _lastName,
+        "email": emailController.text,
+      },
+      "telefone": telefoneLimpo,
+      "altura_cm": alturaCm,
+      "peso_kg": pesoKg,
+      "data_nascimento": _dataNascimentoApi,
+      "tipo_sanguineo": sangueController.text.toUpperCase(),
+      "cep": cepLimpo,
+      "bairro": bairroController.text,
+      "quadra": quadraController.text,
+      "av_rua": avRuaController.text,
+      "numero": numeroController.text,
+      "informacoes_adicionais": infoAdicionaisController.text,
     };
-     debugPrint("Dados para salvar: ${jsonEncode(dataToSave)}");
-     
+    debugPrint("Dados para salvar: ${jsonEncode(dataToSave)}");
+
     try {
       await _apiService.updatePacienteProfile(dataToSave);
 
@@ -334,7 +344,7 @@ class ProfileController extends ChangeNotifier {
       debugPrint("Erro ao salvar perfil: $e");
       String errorMsg = e.toString();
       if (errorMsg.contains("Exception: ")) {
-          errorMsg = errorMsg.replaceFirst("Exception: ", "");
+        errorMsg = errorMsg.replaceFirst("Exception: ", "");
       }
       _errorMessage = "Erro ao salvar: $errorMsg";
       _isSaving = false;

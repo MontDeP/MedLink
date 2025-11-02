@@ -2,18 +2,17 @@ from django.urls import path
 from .views import ConsultaAPIView, ConsultaStatusUpdateView, PagamentoUpdateView, AnotacaoConsultaView, FinalizarConsultaAPIView, PacienteMarcarConsultaView, PacienteRemarcarConsultaView
 
 urlpatterns = [
+    # Listar/criar consultas
     path('', ConsultaAPIView.as_view(), name='agendamentos-list-create'),
-    
-    # CORREÇÃO: Deve ser <int:pk>
+    # Detalhar/editar/deletar consulta específica
     path('<int:pk>/', ConsultaAPIView.as_view(), name='agendamentos-detail-delete'),
-    
-    # CORREÇÃO: Deve ser <int:pk>
+    # Atualizar status da consulta
     path('<int:pk>/status/', ConsultaStatusUpdateView.as_view(), name='agendamentos-status-update'),
-    
-    # CORREÇÃO: Deve ser <int:pk>
+    # Atualizar pagamento da consulta
     path('<int:pk>/pagamento/', PagamentoUpdateView.as_view(), name='agendamentos-pagamento-update'),
-
+    # Anotação da consulta
     path('<int:pk>/anotacao/', AnotacaoConsultaView.as_view(), name='agendamentos-anotacao'),
+    # Finalizar consulta
     path('<int:pk>/finalizar/', FinalizarConsultaAPIView.as_view(), name='agendamentos-finalizar'),
 
     path('paciente-marcar/', PacienteMarcarConsultaView.as_view(), name='paciente-marcar-consulta' ),

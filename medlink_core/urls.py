@@ -34,4 +34,5 @@ urlpatterns = [
     path('api/clinicas/', include('clinicas.urls')),
     path('api/admin/', include('administrador.urls')),
     path('api/admin/', include('configuracoes.urls')),  # se quiser manter essa rota também
+    path('api/', include('administrador.urls')),  # adiciona rotas do app administrador
 ]
