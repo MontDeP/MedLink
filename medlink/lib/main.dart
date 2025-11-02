@@ -22,6 +22,7 @@ import 'views/pages/reset_password_page.dart';
 import 'package:medlink/views/pages/create_password_page.dart';
 import 'package:medlink/views/pages/nova_consulta_page.dart'; 
 import 'package:medlink/views/pages/remarcar_consulta_page.dart';
+import 'package:medlink/views/pages/cancelar_consulta_page.dart';
 
 // Controllers
 import 'controllers/paciente_controller.dart';
@@ -158,6 +159,14 @@ class MyApp extends StatelessWidget {
           );
         }
 
+       if (settings.name == '/cancelar-consulta') {
+          return GetPageRoute(
+            settings: settings,
+            page: () => const CancelarConsultaPage(), // Carrega a nova página
+            transition: Transition.rightToLeft,
+          );
+        }
+        
         // Rota para /reset-password?uid=...&token=...
         if (settings.name != null && settings.name!.startsWith('/reset-password')) {
           final uri = Uri.parse(settings.name!);

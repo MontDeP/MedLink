@@ -1,4 +1,4 @@
-// lib/views/widgets/home/home_fab_menu.dart (CORRIGIDO O CLIQUE E O ÍCONE)
+// lib/views/widgets/home/home_fab_menu.dart (COM A OPÇÃO "CANCELAR")
 import 'package:flutter/material.dart';
 
 class HomeFabMenu extends StatefulWidget {
@@ -36,6 +36,15 @@ class _HomeFabMenuState extends State<HomeFabMenu> {
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
           if (_isFabMenuOpen) ...[
+            // --- INÍCIO DA ADIÇÃO ---
+            _buildMiniFab(
+              icon: Icons.event_busy_outlined, // Ícone para cancelar
+              label: 'Cancelar',
+              onPressed: () => _navigateTo(context, '/cancelar-consulta'),
+            ),
+            const SizedBox(height: 12),
+            // --- FIM DA ADIÇÃO ---
+
             _buildMiniFab(
               icon: Icons.edit_calendar,
               label: 'Remarcar',
@@ -43,7 +52,6 @@ class _HomeFabMenuState extends State<HomeFabMenu> {
             ),
             const SizedBox(height: 12),
             _buildMiniFab(
-              // (Corrigindo também o ícone que estava errado antes)
               icon: Icons.calendar_month, // Ícone que existe
               label: 'Nova Consulta',
               onPressed: () => _navigateTo(context, '/nova-consulta'),
@@ -52,7 +60,6 @@ class _HomeFabMenuState extends State<HomeFabMenu> {
           ],
           FloatingActionButton(
             onPressed: _toggleFabMenu,
-            // (Corrigindo o 'const' que estava errado antes)
             backgroundColor: _isFabMenuOpen ? Colors.redAccent : Color(0xFF317714),
             child: Icon(
               _isFabMenuOpen ? Icons.close : Icons.add,
@@ -64,7 +71,6 @@ class _HomeFabMenuState extends State<HomeFabMenu> {
     );
   }
 
-  // --- CORREÇÃO 1 AQUI ---
   Widget _buildMiniFab({
     required IconData icon,
     required String label,

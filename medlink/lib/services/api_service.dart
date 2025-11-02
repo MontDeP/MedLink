@@ -273,7 +273,35 @@ class ApiService {
     // Sucesso se for 200 OK
     return response.statusCode == 200;
   }
+  Future<bool> pacienteCancelarConsulta(int consultaId, {String? motivo}) async {
+    // ATENÇÃO: Confirme se o endpoint está correto no seu backend.
+    final url = Uri.parse("$baseUrl/api/agendamentos/$consultaId/paciente-cancelar/");
+    if (_accessToken == null) throw Exception('Token não encontrado.');
 
+    // Usamos POST (ou PATCH) para enviar a ação
+    final response = await http.post(
+      url,
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": "Bearer $_accessToken",
+      },
+      // O backend pode ou não precisar de um motivo.
+      body: jsonEncode({'motivo': motivo ?? 'Cancelado pelo paciente'}),
+    );
+    
+    // 200 OK indica sucesso
+    if (response.statusCode == 200) {
+      return true;
+    } else {
+      // Tenta decodificar uma mensagem de erro do backend
+      try {
+        final data = jsonDecode(utf8.decode(response.bodyBytes));
+        throw Exception(data['error'] ?? 'Falha ao cancelar consulta');
+      } catch (e) {
+        throw Exception('Falha ao cancelar consulta (Status: ${response.statusCode})');
+      }
+    }
+  }
   Future<bool> pacienteMarcarConsulta(String especialidade, String medico, DateTime dataHora) async {
     // Endpoint de exemplo: /api/agendamentos/paciente-marcar/
     final url = Uri.parse("$baseUrl/api/agendamentos/paciente-marcar/");
