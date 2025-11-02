@@ -11,11 +11,9 @@ from rest_framework.permissions import IsAuthenticated
 
 from .models import Consulta, Pagamento, ConsultaStatusLog, AnotacaoConsulta
 from .serializers import ConsultaSerializer, AnotacaoConsultaSerializer
-from users.permissions import IsMedicoOrSecretaria, IsMedicoUser
-from .consts import STATUS_CONSULTA_CONCLUIDA, STATUS_CONSULTA_PENDENTE, STATUS_CONSULTA_CHOICES
-from users.models import User
-from pacientes.models import Paciente
-from medicos.models import Medico
+from users.permissions import IsMedicoOrSecretaria
+from .consts import STATUS_CONSULTA_CONCLUIDA, STATUS_CONSULTA_CHOICES
+from users.permissions import IsMedicoUser, HasRole
 
 
 class ConsultaAPIView(APIView):
@@ -214,7 +212,7 @@ class ConsultaStatusUpdateView(APIView):
         consulta = get_object_or_404(Consulta.objects.all(), pk=pk)
         novo_status = request.data.get('status_atual')
 
-        if not novo_status or novo_status not in [choice[0] for choice in Consulta.STATUS_CONSULTA_CHOICES]:
+        if not novo_status or novo_status not in [choice[0] for choice in STATUS_CONSULTA_CHOICES]:
             return Response(
                 {"error": "O campo 'status_atual' com um valor válido é obrigatório."},
                 status=status.HTTP_400_BAD_REQUEST
@@ -241,7 +239,8 @@ class ConsultaStatusUpdateView(APIView):
 
 
 class PagamentoUpdateView(APIView):
-    permission_classes = [IsMedicoOrSecretaria]
+    permission_classes = [HasRole]
+    required_roles = ['SECRETARIA']
 
     def put(self, request, pk):
         consulta = get_object_or_404(Consulta.objects.all(), pk=pk)
