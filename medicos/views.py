@@ -34,12 +34,13 @@ class MedicoAgendaAPIView(APIView):
                 {"error": "Os parâmetros 'year' e 'month' são obrigatórios e devem ser números."},
                 status=status.HTTP_400_BAD_REQUEST
             )
-
+        
         # Filtra as consultas do médico para o mês e ano especificados
         consultas_do_mes = Consulta.objects.filter(
             medico=medico,
             data_hora__year=year,
             data_hora__month=month
+        ).exclude(status_atual='CANCELADA'
         ).select_related('paciente__user').order_by('data_hora')
 
         # Agrupa as consultas por dia
@@ -53,12 +54,28 @@ class MedicoAgendaAPIView(APIView):
             agenda_formatada[dia].append({
                 'id': consulta.id,
                 'horario': consulta.data_hora.strftime('%H:%M'),
-                'paciente': consulta.paciente.nome_completo, # Acessa a property do modelo
+                'paciente': consulta.paciente.nome_completo,  # Acessa a property do modelo
             })
             
-        return Response(agenda_formatada, status=status.HTTP_200_OK)
+        return Response
 
+class EspecialidadeListView(APIView):
+    """
+    API para listar todas as especialidades disponíveis para o paciente.
+    """
+    permission_classes = [IsAuthenticated] # Apenas usuários logados podem ver
 
+    def get(self, request, *args, **kwargs):
+        # Pega as "choices" do modelo Medico
+        choices = Medico.EspecialidadeChoices.choices
+        
+        # Formata a lista para o frontend (ex: {'value': 'CARDIOLOGIA', 'label': 'Cardiologia'})
+        especialidades_formatadas = [
+            {'value': value, 'label': label}
+            for value, label in choices
+        ]
+        
+        return Response(especialidades_formatadas, status=status.HTTP_200_OK)
 # --- O RESTO DO FICHEIRO CONTINUA IGUAL ---
 
 class SolicitarReagendamentoAPIView(UpdateAPIView):
@@ -97,13 +114,32 @@ class SolicitarReagendamentoAPIView(UpdateAPIView):
         serializer = self.get_serializer(consulta)
         return Response(serializer.data)
 
+# ... (o resto do arquivo)
 
 class MedicoListView(ListAPIView):
     """
-    View para listar todos os médicos ativos.
+    View para listar todos os médicos.
     Acessível apenas por usuários autenticados.
+    FILTRA por especialidade se o query param 'especialidade' for passado.
     """
-    # Filtra para retornar apenas médicos com usuário ativo
-    queryset = Medico.objects.select_related('user').filter(user__is_active=True)
     serializer_class = MedicoSerializer
     permission_classes = [IsAuthenticated]
+
+    # 👇 SUBSTITUA A FUNÇÃO get_queryset INTEIRA POR ESTA 👇
+    def get_queryset(self):
+        
+        # 1. Começa com um dicionário de filtros que sempre se aplicam
+        filtros = {
+            'user__is_active': True
+        }
+        
+        # 2. Pega o parâmetro 'especialidade' da URL
+        especialidade = self.request.query_params.get('especialidade')
+        
+        # 3. Se o parâmetro foi fornecido, ADICIONA ao dicionário de filtros
+        if especialidade:
+            filtros['especialidade'] = especialidade
+            
+        # 4. Executa a query UMA VEZ com TODOS os filtros necessários
+        #    O "select_related" vem antes do filter.
+        return Medico.objects.select_related('user').filter(**filtros).order_by('user__first_name')

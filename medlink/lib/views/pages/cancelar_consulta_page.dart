@@ -1,4 +1,5 @@
-// lib/views/pages/cancelar_consulta_page.dart (COM POP-UP DE SUCESSO)
+// lib/views/pages/cancelar_consulta_page.dart (COM A LÓGICA DE 24H NO FRONTEND)
+
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:medlink/models/dashboard_data_model.dart'; 
@@ -35,6 +36,7 @@ class _CancelarConsultaPageState extends State<CancelarConsultaPage> {
       _cancelingId = null;
     });
     try {
+      // Esta função já busca 'pendente', 'confirmada' e 'reagendada'
       final consultas = await _apiService.getPacienteConsultasPendentes();
       setState(() {
         _consultasPendentes = consultas;
@@ -47,6 +49,35 @@ class _CancelarConsultaPageState extends State<CancelarConsultaPage> {
       });
     }
   }
+
+  // --- INÍCIO DA MODIFICAÇÃO (NOVA FUNÇÃO DE ERRO) ---
+  Future<void> _showErro24hDialog() async {
+    await showDialog(
+      context: context,
+      barrierDismissible: false, // Impede de fechar clicando fora
+      builder: (BuildContext dialogContext) {
+        return AlertDialog(
+          title: const Text('Atenção'),
+          content: const Text(
+              'Consultas não podem ser canceladas com menos de 24h de antecedência.'),
+          actions: [
+            TextButton(
+              child: const Text('OK'),
+              onPressed: () {
+                Navigator.of(dialogContext).pop(); // 1. Fecha o pop-up
+              },
+            ),
+          ],
+        );
+      },
+    );
+
+    // 2. Após fechar o pop-up, volta para a Home (como você pediu)
+    if (mounted) {
+      Navigator.of(context).pop();
+    }
+  }
+  // --- FIM DA MODIFICAÇÃO ---
 
   Future<void> _showConfirmarCancelamentoDialog(ProximaConsulta consulta) async {
     bool? confirmado = await showDialog<bool>(
@@ -76,11 +107,12 @@ class _CancelarConsultaPageState extends State<CancelarConsultaPage> {
     );
 
     if (confirmado == true) {
-      _cancelarConsulta(consulta.id);
+      _cancelarConsulta(consulta.id); // Esta função (abaixo) não mudou
     }
   }
 
-  // --- FUNÇÃO MODIFICADA ---
+  // Esta função continua a mesma, pois ela só lida com o SUCESSO
+  // ou com erros da API (que não sejam o erro de 24h)
   Future<void> _cancelarConsulta(int consultaId) async {
     setState(() {
       _isCanceling = true;
@@ -90,23 +122,21 @@ class _CancelarConsultaPageState extends State<CancelarConsultaPage> {
     try {
       final success = await _apiService.pacienteCancelarConsulta(consultaId);
 
-      // --- INÍCIO DA MODIFICAÇÃO ---
       if (success) {
         if (!mounted) return;
 
-        // 1. Mostra o Pop-up de sucesso
         await showDialog(
           context: context,
-          barrierDismissible: false, // Impede de fechar clicando fora
+          barrierDismissible: false, 
           builder: (BuildContext dialogContext) {
             return AlertDialog(
               title: const Text('Sucesso!'),
-              content: const Text('Consulta cancelada com sucesso!'), // Sua mensagem
+              content: const Text('Consulta cancelada com sucesso!'), 
               actions: [
                 TextButton(
                   child: const Text('OK'),
                   onPressed: () {
-                    Navigator.of(dialogContext).pop(); // Fecha o pop-up
+                    Navigator.of(dialogContext).pop(); 
                   },
                 ),
               ],
@@ -114,39 +144,46 @@ class _CancelarConsultaPageState extends State<CancelarConsultaPage> {
           },
         );
 
-        // 2. Após fechar o pop-up, fecha a página de "CancelarConsultaPage"
-        // Isso vai automaticamente voltar para a Home e disparar o refresh.
         if (mounted) {
           Navigator.of(context).pop();
         }
-        // Não precisamos mais do _loadConsultasPendentes() aqui.
-
-      // --- FIM DA MODIFICAÇÃO ---
-
-      } else {
-        throw Exception('A API retornou falha.');
       }
+    
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Erro ao cancelar: ${e.toString()}'),
-          backgroundColor: Colors.red,
-        ),
+      final errorMessage = e.toString().replaceFirst('Exception: ', '');
+
+      await showDialog(
+        context: context,
+        builder: (BuildContext dialogContext) {
+          return AlertDialog(
+            title: const Text('Não foi possível cancelar'),
+            content: Text(errorMessage), 
+            actions: [
+              TextButton(
+                child: const Text('OK'),
+                onPressed: () {
+                  Navigator.of(dialogContext).pop(); 
+                },
+              ),
+            ],
+          );
+        },
       );
+
       setState(() {
         _isCanceling = false;
         _cancelingId = null;
       });
     }
-    // O finally não é mais necessário aqui, pois a página será fechada.
   }
-
+  
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFF5BBCDC),
       appBar: AppBar(
+        // ... (o AppBar continua o mesmo) ...
         backgroundColor: Colors.white,
         elevation: 2,
         title: const Text(
@@ -165,18 +202,16 @@ class _CancelarConsultaPageState extends State<CancelarConsultaPage> {
   }
 
   Widget _buildBody() {
+    // ... (o _buildBody continua o mesmo) ...
     if (_isLoading) {
       return const Center(child: CircularProgressIndicator(color: Colors.white));
     }
-
     if (_errorMessage != null) {
       return Center(child: Text(_errorMessage!, style: const TextStyle(color: Colors.white)));
     }
-
     if (_consultasPendentes == null || _consultasPendentes!.isEmpty) {
       return const Center(child: Text('Você não possui consultas para cancelar.', style: TextStyle(color: Colors.white, fontSize: 16)));
     }
-    
     return _buildListaConsultas();
   }
  
@@ -187,6 +222,23 @@ class _CancelarConsultaPageState extends State<CancelarConsultaPage> {
       itemBuilder: (context, index) {
         final consulta = _consultasPendentes![index];
         final bool isEsteItemCarregando = _isCanceling && _cancelingId == consulta.id;
+
+        // --- INÍCIO DA MODIFICAÇÃO (NOVA LÓGICA DE CLIQUE) ---
+        final VoidCallback onCancelPressed = () {
+          // 1. Calcula a diferença de tempo
+          final difference = consulta.data.difference(DateTime.now());
+          
+          // 2. Verifica a regra (igual à do backend: < 1 dia)
+          //
+          if (difference.inDays < 1) { 
+            // 3. Se violar a regra, mostra o pop-up de erro (que redireciona pra Home)
+            _showErro24hDialog();
+          } else {
+            // 4. Se a regra estiver OK, mostra o pop-up de confirmação
+            _showConfirmarCancelamentoDialog(consulta);
+          }
+        };
+        // --- FIM DA MODIFICAÇÃO ---
 
         return Card(
           margin: const EdgeInsets.only(bottom: 12),
@@ -205,10 +257,10 @@ class _CancelarConsultaPageState extends State<CancelarConsultaPage> {
               : IconButton(
                   icon: const Icon(Icons.cancel, color: Colors.red),
                   tooltip: 'Cancelar',
-                  onPressed: () => _showConfirmarCancelamentoDialog(consulta),
+                  onPressed: onCancelPressed, // <-- Lógica nova aplicada
                 ),
             
-            onTap: isEsteItemCarregando ? null : () => _showConfirmarCancelamentoDialog(consulta),
+            onTap: isEsteItemCarregando ? null : onCancelPressed, // <-- Lógica nova aplicada
           ),
         );
       },

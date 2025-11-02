@@ -12,8 +12,10 @@ from rest_framework.permissions import IsAuthenticated
 from .models import Consulta, Pagamento, ConsultaStatusLog, AnotacaoConsulta
 from .serializers import ConsultaSerializer, AnotacaoConsultaSerializer
 from users.permissions import IsMedicoOrSecretaria
-from .consts import STATUS_CONSULTA_CONCLUIDA, STATUS_CONSULTA_CHOICES
+from .consts import STATUS_CONSULTA_CONCLUIDA, STATUS_CONSULTA_CHOICES, STATUS_CONSULTA_PENDENTE
 from users.permissions import IsMedicoUser, HasRole
+from pacientes.models import Paciente
+from users.models import User
 
 
 class ConsultaAPIView(APIView):

@@ -1,14 +1,10 @@
-// lib/views/pages/nova_consulta_page.dart (COM POP-UP DE SUCESSO)
+// ARQUIVO: lib/views/pages/nova_consulta_page.dart (VERSÃO COM LÓGICA DE CARREGAMENTO CORRIGIDA)
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:medlink/models/dashboard_data_model.dart';
 import 'package:medlink/services/api_service.dart';
-import 'package:medlink/models/especialidade_model.dart';
-import 'package:medlink/models/medico_disponivel.dart';
-
-// ... (O início da classe, initState, _carregarDadosDosDropdowns, _onEspecialidadeChanged,
-//      gerarHorarios, e _abrirSeletorDeHorario permanecem exatamente iguais
-//      à versão anterior que eu te enviei) ...
+// Importa o modelo Doctor que é usado nesta página
+import 'package:medlink/models/doctor_model.dart';
 
 class NovaConsultaPage extends StatefulWidget {
   final bool isRescheduling;
@@ -27,90 +23,147 @@ class NovaConsultaPage extends StatefulWidget {
 class _NovaConsultaPageState extends State<NovaConsultaPage> {
   final ApiService _apiService = ApiService();
   bool _isSaving = false;
-  
-  bool _isLoadingData = true; 
-  String? _dataErrorMessage;
-  
-  List<Especialidade> _listaEspecialidades = [];
-  List<MedicoDisponivel> _listaMedicosCompleta = [];
-  List<MedicoDisponivel> _listaMedicosFiltrada = [];
 
-  String? selectedEspecialidadeLabel;
-  int? selectedMedicoId; 
-  
+  bool _isLoadingData = true; // Loading inicial (especialidades)
+  bool _isMedicoLoading = false; // Loading do dropdown de médicos
+  String? _dataErrorMessage;
+
+  // Lista de especialidades (vem como Map da API)
+  List<Map<String, dynamic>> _listaEspecialidades = [];
+  // Lista de médicos (agora começa vazia)
+  List<Doctor> _listaMedicosFiltrada = [];
+
+  String? selectedEspecialidadeLabel; // O 'label' (ex: "Cardiologia")
+  String? selectedEspecialidadeKey; // O 'value' (ex: "CARDIOLOGIA")
+  int? selectedMedicoId;
+
   DateTime? selectedDate;
   String? selectedHorario;
 
   @override
   void initState() {
     super.initState();
+    Intl.defaultLocale = 'pt_BR';
     _carregarDadosDosDropdowns();
   }
 
+  // --- FUNÇÃO MODIFICADA ---
   Future<void> _carregarDadosDosDropdowns() async {
     setState(() {
-      _isLoadingData = true;
+      _isLoadingData = true; // Começa o loading principal
       _dataErrorMessage = null;
     });
 
     try {
-      final futureEspecialidades = _apiService.getEspecialidades();
-      final futureMedicos = _apiService.getMedicosDisponiveis();
+      final accessToken = _apiService.getToken();
+      if (accessToken == null) {
+        throw Exception('Token não encontrado. Faça login novamente.');
+      }
 
-      final results = await Future.wait([futureEspecialidades, futureMedicos]);
+      // 1. Carrega APENAS as especialidades
+      _listaEspecialidades = List<Map<String, dynamic>>.from(
+        await _apiService.getEspecialidades(),
+      );
 
-      _listaEspecialidades = results[0] as List<Especialidade>;
-      _listaMedicosCompleta = results[1] as List<MedicoDisponivel>;
-
+      // 2. Lógica de reagendamento (se aplicável)
       if (widget.isRescheduling && widget.consultaAntiga != null) {
-        final especialidadeAntiga = widget.consultaAntiga!.especialidade;
+        final especialidadeAntigaLabel = widget.consultaAntiga!.especialidade;
         final medicoAntigoNome = widget.consultaAntiga!.medico;
 
-        selectedEspecialidadeLabel = especialidadeAntiga;
-        
-        final especialidadeKey = _listaEspecialidades
-            .firstWhere((e) => e.label == especialidadeAntiga, orElse: () => Especialidade(key: '', label: ''))
-            .key;
-        _listaMedicosFiltrada = _listaMedicosCompleta
-            .where((medico) => medico.especialidadeKey == especialidadeKey)
-            .toList();
-
-        final medico = _listaMedicosFiltrada.firstWhere(
-            (m) => m.nomeCompleto == medicoAntigoNome,
-            orElse: () => _listaMedicosFiltrada.isNotEmpty 
-                        ? _listaMedicosFiltrada.first 
-                        : MedicoDisponivel(userId: 0, nomeCompleto: '', especialidadeKey: '', especialidadeLabel: '')
+        // Encontra a especialidade antiga na lista
+        final especialidade = _listaEspecialidades.firstWhere(
+          (e) => e['label'] == especialidadeAntigaLabel,
+          orElse: () => {'key': '', 'label': ''},
         );
-        selectedMedicoId = medico.userId;
+
+        selectedEspecialidadeLabel = especialidade['label'];
+        selectedEspecialidadeKey = especialidade['key'];
+
+        // 3. Se encontrou a especialidade, CARREGA OS MÉDICOS dela
+        if (selectedEspecialidadeKey != null &&
+            selectedEspecialidadeKey!.isNotEmpty) {
+          
+          // Chama a nova função para carregar os médicos filtrados
+          await _carregarMedicosPorEspecialidade(selectedEspecialidadeKey!);
+
+          // 4. Tenta pré-selecionar o médico antigo
+          final medico = _listaMedicosFiltrada.firstWhere(
+              (m) => m.fullName == medicoAntigoNome,
+              orElse: () => _listaMedicosFiltrada.isNotEmpty
+                  ? _listaMedicosFiltrada.first
+                  : Doctor(id: 0, fullName: '', specialty: ''));
+          selectedMedicoId = medico.id;
+        }
       }
     } catch (e) {
       debugPrint("Erro ao carregar dados: $e");
-      _dataErrorMessage = "Erro ao carregar dados. Tente novamente.";
+      if (mounted) {
+        setState(() {
+          _dataErrorMessage = "Erro ao carregar dados. Tente novamente.";
+        });
+      }
     }
 
+    if (mounted) {
+      setState(() {
+        _isLoadingData = false; // Termina o loading principal
+      });
+    }
+  }
+
+  // --- NOVA FUNÇÃO ADICIONADA ---
+  /// Busca na API os médicos para a especialidade selecionada.
+  Future<void> _carregarMedicosPorEspecialidade(String especialidadeKey) async {
     setState(() {
-      _isLoadingData = false;
+      _isMedicoLoading = true; // Ativa o loading do dropdown de médico
+      _listaMedicosFiltrada = []; // Limpa a lista antiga
+      selectedMedicoId = null; // Limpa o médico selecionado
+    });
+    try {
+      // Chama a NOVA função da API
+      _listaMedicosFiltrada =
+          await _apiService.getDoctorsByEspecialidade(especialidadeKey);
+    } catch (e) {
+      debugPrint("Erro ao carregar médicos: $e");
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+              content: Text("Erro ao carregar médicos."),
+              backgroundColor: Colors.red),
+        );
+      }
+    }
+    setState(() {
+      _isMedicoLoading = false; // Desativa o loading do médico
     });
   }
 
+  // --- FUNÇÃO MODIFICADA ---
   void _onEspecialidadeChanged(String? novaEspecialidadeLabel) {
     if (novaEspecialidadeLabel == null) return;
-    
-    final especialidadeKey = _listaEspecialidades
-        .firstWhere((e) => e.label == novaEspecialidadeLabel, orElse: () => Especialidade(key: '', label: ''))
-        .key;
+
+    final especialidade = _listaEspecialidades.firstWhere(
+      (e) => e['label'] == novaEspecialidadeLabel,
+      // Corrigido para usar 'value' no orElse também
+      orElse: () => {'value': '', 'label': ''}, 
+    );
+
+    // Corrigido para ler 'value' em vez de 'key'
+    final especialidadeKey = especialidade['value']; // <-- CORREÇÃO AQUI
 
     setState(() {
       selectedEspecialidadeLabel = novaEspecialidadeLabel;
-      
-      if (widget.consultaAntiga == null || widget.consultaAntiga!.especialidade != novaEspecialidadeLabel) {
-         selectedMedicoId = null;
-      }
+      selectedEspecialidadeKey = especialidadeKey;
 
-      _listaMedicosFiltrada = _listaMedicosCompleta
-          .where((medico) => medico.especialidadeKey == especialidadeKey)
-          .toList();
+      // Limpa a seleção de médico e a lista
+      selectedMedicoId = null;
+      _listaMedicosFiltrada = [];
     });
+
+    // CHAMA A API para buscar os médicos filtrados
+    if (especialidadeKey != null && especialidadeKey.isNotEmpty) {
+      _carregarMedicosPorEspecialidade(especialidadeKey);
+    }
   }
 
   List<String> gerarHorarios() {
@@ -118,7 +171,8 @@ class _NovaConsultaPageState extends State<NovaConsultaPage> {
     TimeOfDay start = const TimeOfDay(hour: 8, minute: 0);
     TimeOfDay end = const TimeOfDay(hour: 17, minute: 30);
     TimeOfDay atual = start;
-    while (atual.hour < end.hour || (atual.hour == end.hour && atual.minute <= end.minute)) {
+    while (atual.hour < end.hour ||
+        (atual.hour == end.hour && atual.minute <= end.minute)) {
       if (atual.hour < 12 || atual.hour > 13) {
         String hora = atual.hour.toString().padLeft(2, '0');
         String minuto = atual.minute.toString().padLeft(2, '0');
@@ -134,6 +188,7 @@ class _NovaConsultaPageState extends State<NovaConsultaPage> {
     }
     return horarios;
   }
+
   void _abrirSeletorDeHorario(BuildContext context) {
     final List<String> horariosDisponiveis = gerarHorarios();
     showDialog(
@@ -141,7 +196,8 @@ class _NovaConsultaPageState extends State<NovaConsultaPage> {
       builder: (BuildContext context) {
         return Dialog(
           backgroundColor: Colors.white,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
           child: Padding(
             padding: const EdgeInsets.all(16),
             child: Column(
@@ -184,7 +240,8 @@ class _NovaConsultaPageState extends State<NovaConsultaPage> {
                           child: Text(
                             horario,
                             style: TextStyle(
-                              color: selecionado ? Colors.white : Colors.black87,
+                              color:
+                                  selecionado ? Colors.white : Colors.black87,
                               fontWeight: selecionado
                                   ? FontWeight.bold
                                   : FontWeight.normal,
@@ -208,10 +265,11 @@ class _NovaConsultaPageState extends State<NovaConsultaPage> {
     );
   }
 
-  // --- INÍCIO DA MODIFICAÇÃO ---
   Future<void> _salvarNovaConsulta() async {
-    if (selectedEspecialidadeLabel == null ||
-        selectedMedicoId == null || 
+    if (!mounted) return;
+
+    if (selectedEspecialidadeKey == null ||
+        selectedMedicoId == null ||
         selectedDate == null ||
         selectedHorario == null) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -243,21 +301,19 @@ class _NovaConsultaPageState extends State<NovaConsultaPage> {
         );
       } else {
         success = await _apiService.pacienteMarcarConsulta(
-          selectedEspecialidadeLabel!,
-          selectedMedicoId!, 
-          novaDataHora,
+          selectedMedicoId!, // 1. O ID do médico (int)
+          selectedEspecialidadeKey!, // 2. A Key da especialidade (String)
+          novaDataHora, // 3. A data
         );
       }
-      
+
       if (!mounted) return;
 
       if (success) {
-        // Define a mensagem correta
         final successMessage = widget.isRescheduling
-            ? 'Consulta reagendada com sucesso!' // <-- Sua mensagem
+            ? 'Consulta reagendada com sucesso!'
             : 'Consulta marcada com sucesso!';
 
-        // Substitui o SnackBar por um showDialog
         await showDialog(
           context: context,
           builder: (BuildContext dialogContext) {
@@ -275,10 +331,8 @@ class _NovaConsultaPageState extends State<NovaConsultaPage> {
             );
           },
         );
-        
-        // Após o dialog ser fechado, fecha a página de NovaConsulta
-        Navigator.pop(context); 
 
+        Navigator.pop(context);
       } else {
         throw Exception(
           widget.isRescheduling ? 'Falha ao remarcar' : 'Falha ao marcar',
@@ -286,14 +340,15 @@ class _NovaConsultaPageState extends State<NovaConsultaPage> {
       }
     } catch (e) {
       if (!mounted) return;
-      
+
       String errorMessage = "Erro desconhecido. Tente novamente.";
       if (e.toString().toLowerCase().contains('falha ao marcar')) {
-        errorMessage = "Ocorreu um erro no servidor (Erro 500). Verifique o backend.";
+        errorMessage =
+            "Ocorreu um erro no servidor (Erro 500). Verifique o backend.";
       } else if (e.toString().contains(":")) {
         errorMessage = e.toString().split(":").last.trim();
       }
-          
+
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Erro ao salvar: $errorMessage'),
@@ -301,16 +356,14 @@ class _NovaConsultaPageState extends State<NovaConsultaPage> {
         ),
       );
     } finally {
-      setState(() => _isSaving = false);
+      if (mounted) {
+        setState(() => _isSaving = false);
+      }
     }
   }
-  // --- FIM DA MODIFICAÇÃO ---
-
 
   @override
   Widget build(BuildContext context) {
-    // O método build() permanece exatamente igual ao da versão anterior.
-    // (Vou omiti-lo aqui para não repetir o código)
     return Scaffold(
       backgroundColor: const Color(0xFF5BBCDC),
       body: SafeArea(
@@ -329,7 +382,6 @@ class _NovaConsultaPageState extends State<NovaConsultaPage> {
                 ),
               ),
             ),
-            
             Center(
               child: Card(
                 shape: RoundedRectangleBorder(
@@ -362,93 +414,60 @@ class _NovaConsultaPageState extends State<NovaConsultaPage> {
                           ),
                         ],
                         const SizedBox(height: 20),
-                        
                         if (_isLoadingData)
                           const Padding(
                             padding: EdgeInsets.symmetric(vertical: 40),
                             child: Column(
                               children: [
-                                CircularProgressIndicator(color: Color(0xFF317714)),
+                                CircularProgressIndicator(
+                                    color: Color(0xFF317714)),
                                 SizedBox(height: 10),
                                 Text("Carregando dados..."),
                               ],
                             ),
                           )
                         else if (_dataErrorMessage != null)
-                           Padding(
+                          Padding(
                             padding: const EdgeInsets.symmetric(vertical: 40),
                             child: Column(
                               children: [
-                                const Icon(Icons.error_outline, color: Colors.red, size: 30),
+                                const Icon(Icons.error_outline,
+                                    color: Colors.red, size: 30),
                                 const SizedBox(height: 10),
                                 Text(
-                                  _dataErrorMessage!, 
-                                  textAlign: TextAlign.center, 
-                                  style: const TextStyle(color: Colors.red)
+                                  _dataErrorMessage!,
+                                  textAlign: TextAlign.center,
+                                  style: const TextStyle(color: Colors.red),
                                 ),
                                 const SizedBox(height: 10),
                                 ElevatedButton(
-                                  onPressed: _carregarDadosDosDropdowns, 
-                                  child: const Text("Tentar Novamente")
-                                )
+                                    onPressed: _carregarDadosDosDropdowns,
+                                    child: const Text("Tentar Novamente"))
                               ],
                             ),
                           )
                         else ...[
-                          
                           const Align(
                             alignment: Alignment.centerLeft,
                             child: Text(
                               'Especialidade',
-                              style: TextStyle(fontSize: 14, color: Colors.grey),
+                              style:
+                                  TextStyle(fontSize: 14, color: Colors.grey),
                             ),
                           ),
                           const SizedBox(height: 5),
                           DropdownButtonFormField<String>(
                             value: selectedEspecialidadeLabel,
                             items: _listaEspecialidades
-                                .map((e) =>
-                                    DropdownMenuItem(value: e.label, child: Text(e.label)))
+                                .map((e) => DropdownMenuItem(
+                                    value: e['label']
+                                        as String, // Usa o 'label'
+                                    child: Text(e['label'] as String)))
                                 .toList(),
-                            onChanged: _onEspecialidadeChanged, 
+                            onChanged: _onEspecialidadeChanged,
                             decoration: InputDecoration(
-                              contentPadding:
-                                  const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                              border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              filled: true,
-                              fillColor: Colors.grey.shade100, 
-                            ),
-                          ),
-                          const SizedBox(height: 15),
-
-                          const Align(
-                            alignment: Alignment.centerLeft,
-                            child: Text(
-                              'Médico',
-                              style: TextStyle(fontSize: 14, color: Colors.grey),
-                            ),
-                          ),
-                          const SizedBox(height: 5),
-                          DropdownButtonFormField<int>(
-                            value: selectedMedicoId,
-                            items: _listaMedicosFiltrada
-                                .map((m) =>
-                                    DropdownMenuItem(
-                                      value: m.userId, 
-                                      child: Text(m.nomeCompleto)
-                                    ))
-                                .toList(),
-                            onChanged: (value) {
-                              setState(() {
-                                selectedMedicoId = value;
-                              });
-                            },
-                            decoration: InputDecoration(
-                              hintText: selectedEspecialidadeLabel == null ? 'Selecione uma especialidade primeiro' : 'Selecione o médico',
-                              contentPadding:
-                                  const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                              contentPadding: const EdgeInsets.symmetric(
+                                  horizontal: 12, vertical: 8),
                               border: OutlineInputBorder(
                                 borderRadius: BorderRadius.circular(12),
                               ),
@@ -457,12 +476,64 @@ class _NovaConsultaPageState extends State<NovaConsultaPage> {
                             ),
                           ),
                           const SizedBox(height: 15),
+                          const Align(
+                            alignment: Alignment.centerLeft,
+                            child: Text(
+                              'Médico',
+                              style:
+                                  TextStyle(fontSize: 14, color: Colors.grey),
+                            ),
+                          ),
+                          const SizedBox(height: 5),
 
+                          // --- CAMPO DE MÉDICO MODIFICADO ---
+                          if (_isMedicoLoading)
+                            const Padding(
+                              padding: EdgeInsets.symmetric(vertical: 20),
+                              child: Center(
+                                  child: CircularProgressIndicator(
+                                      color: Color(0xFF317714))),
+                            )
+                          else
+                            DropdownButtonFormField<int>(
+                              value: selectedMedicoId,
+                              items: _listaMedicosFiltrada
+                                  .map((m) => DropdownMenuItem(
+                                      value: m.id, // Usa o 'id' (int)
+                                      child: Text(
+                                          m.fullName) // Usa o 'fullName'
+                                      ))
+                                  .toList(),
+                              onChanged: (value) {
+                                setState(() {
+                                  selectedMedicoId = value;
+                                });
+                              },
+                              decoration: InputDecoration(
+                                hintText: selectedEspecialidadeLabel == null
+                                    ? 'Selecione uma especialidade primeiro'
+                                    : (_listaMedicosFiltrada.isEmpty
+                                        ? 'Nenhum médico encontrado'
+                                        : 'Selecione o médico'),
+                                contentPadding:
+                                    const EdgeInsets.symmetric(
+                                        horizontal: 12, vertical: 8),
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                filled: true,
+                                fillColor: Colors.grey.shade100,
+                              ),
+                            ),
+                          // --- FIM DA MODIFICAÇÃO ---
+
+                          const SizedBox(height: 15),
                           const Align(
                             alignment: Alignment.centerLeft,
                             child: Text(
                               'Nova Data da Consulta',
-                              style: TextStyle(fontSize: 14, color: Colors.grey),
+                              style:
+                                  TextStyle(fontSize: 14, color: Colors.grey),
                             ),
                           ),
                           const SizedBox(height: 5),
@@ -487,7 +558,8 @@ class _NovaConsultaPageState extends State<NovaConsultaPage> {
                               decoration: BoxDecoration(
                                 color: Colors.grey.shade100,
                                 borderRadius: BorderRadius.circular(12),
-                                border: Border.all(color: Colors.grey.shade300),
+                                border:
+                                    Border.all(color: Colors.grey.shade300),
                               ),
                               child: Text(
                                 selectedDate != null
@@ -507,7 +579,8 @@ class _NovaConsultaPageState extends State<NovaConsultaPage> {
                             alignment: Alignment.centerLeft,
                             child: Text(
                               'Novo Horário da Consulta',
-                              style: TextStyle(fontSize: 14, color: Colors.grey),
+                              style:
+                                  TextStyle(fontSize: 14, color: Colors.grey),
                             ),
                           ),
                           const SizedBox(height: 5),
@@ -520,7 +593,8 @@ class _NovaConsultaPageState extends State<NovaConsultaPage> {
                               decoration: BoxDecoration(
                                 color: Colors.grey.shade100,
                                 borderRadius: BorderRadius.circular(12),
-                                border: Border.all(color: Colors.grey.shade300),
+                                border:
+                                    Border.all(color: Colors.grey.shade300),
                               ),
                               child: Text(
                                 selectedHorario ?? 'Selecione o horário',
@@ -533,14 +607,15 @@ class _NovaConsultaPageState extends State<NovaConsultaPage> {
                             ),
                           ),
                           const SizedBox(height: 25),
-
                           Row(
                             children: [
                               Expanded(
                                 child: OutlinedButton(
-                                  onPressed: _isSaving ? null : () {
-                                    Navigator.pop(context);
-                                  },
+                                  onPressed: _isSaving
+                                      ? null
+                                      : () {
+                                          Navigator.pop(context);
+                                        },
                                   style: OutlinedButton.styleFrom(
                                     backgroundColor: Colors.white,
                                     side: const BorderSide(color: Colors.grey),
@@ -557,23 +632,23 @@ class _NovaConsultaPageState extends State<NovaConsultaPage> {
                               const SizedBox(width: 10),
                               Expanded(
                                 child: ElevatedButton(
-                                  onPressed: _isSaving ? null : _salvarNovaConsulta,
+                                  onPressed:
+                                      _isSaving ? null : _salvarNovaConsulta,
                                   style: ElevatedButton.styleFrom(
                                     backgroundColor: const Color(0xFF317714),
                                     shape: RoundedRectangleBorder(
                                       borderRadius: BorderRadius.circular(12),
                                     ),
                                   ),
-                                  child: _isSaving 
-                                    ? const SizedBox(
-                                        width: 20, 
-                                        height: 20, 
-                                        child: CircularProgressIndicator(
-                                          color: Colors.white, 
-                                          strokeWidth: 2,
-                                        )
-                                      )
-                                    : const Text('Salvar'),
+                                  child: _isSaving
+                                      ? const SizedBox(
+                                          width: 20,
+                                          height: 20,
+                                          child: CircularProgressIndicator(
+                                            color: Colors.white,
+                                            strokeWidth: 2,
+                                          ))
+                                      : const Text('Salvar'),
                                 ),
                               ),
                             ],

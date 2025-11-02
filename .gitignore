@@ -16,3 +16,9 @@ db.sqlite3
 .env
 
 clinicas/management/commands/popular_dados_iniciais.py
+
+# Configurações do VS Code
+/.vscode
+.vscode/
+.vscode
+MedLink\.vscode

@@ -15,17 +15,10 @@ def create_user_profile(sender, instance, created, **kwargs):
         if instance.user_type == 'PACIENTE':
             Paciente.objects.create(user=instance)
             
-        elif instance.user_type == 'SECRETARIA':
-            Secretaria.objects.create(user=instance)
             
         elif instance.user_type == 'ADMIN':
             admin.objects.create(user=instance) # <-- Isto agora vai funcionar
-            
-        elif instance.user_type == 'MEDICO':
-            try:
-                Medico.objects.create(user=instance, crm=f"PENDENTE_{instance.id}")
-            except Exception as e:
-                print(f"AVISO: Falha ao criar perfil de médico automático para {instance.email}: {e}")
+        
 
 @receiver(user_logged_in) 
 def log_user_login(sender, request, user, **kwargs):
