@@ -159,22 +159,14 @@ class MyApp extends StatelessWidget {
           );
         }
 
-<<<<<<< Updated upstream
-       if (settings.name == '/cancelar-consulta') {
-=======
         if (settings.name == '/cancelar-consulta') {
->>>>>>> Stashed changes
           return GetPageRoute(
             settings: settings,
             page: () => const CancelarConsultaPage(), // Carrega a nova página
             transition: Transition.rightToLeft,
           );
         }
-<<<<<<< Updated upstream
-        
-=======
 
->>>>>>> Stashed changes
         // Rota para /reset-password?uid=...&token=...
         if (settings.name != null && settings.name!.startsWith('/reset-password')) {
           final uri = Uri.parse(settings.name!);

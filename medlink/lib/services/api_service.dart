@@ -319,11 +319,7 @@ class ApiService {
     // Sucesso se for 200 OK
     return response.statusCode == 200;
   }
-<<<<<<< Updated upstream
-  Future<bool> pacienteCancelarConsulta(int consultaId, {String? motivo}) async {
-=======
  Future<bool> pacienteCancelarConsulta(int consultaId, {String? motivo}) async {
->>>>>>> Stashed changes
     // ATENÇÃO: Confirme se o endpoint está correto no seu backend.
     final url = Uri.parse("$baseUrl/api/agendamentos/$consultaId/paciente-cancelar/");
     if (_accessToken == null) throw Exception('Token não encontrado.');
@@ -352,11 +348,7 @@ class ApiService {
       }
     }
   }
-<<<<<<< Updated upstream
-  Future<bool> pacienteMarcarConsulta(String especialidade, String medico, DateTime dataHora) async {
-=======
   Future<bool> pacienteMarcarConsulta(String especialidade, int medicoId, DateTime dataHora) async { // <-- MUDANÇA AQUI
->>>>>>> Stashed changes
     // Endpoint de exemplo: /api/agendamentos/paciente-marcar/
     final url = Uri.parse("$baseUrl/api/agendamentos/paciente-marcar/");
     if (_accessToken == null) throw Exception('Token não encontrado.');
