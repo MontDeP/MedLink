@@ -1,9 +1,37 @@
-# medicos/models.py
 from django.db import models
 from django.conf import settings
 from clinicas.models import Clinica
 from users.models import User
 from django.utils.translation import gettext_lazy as _
+
+# CÓDIGO RESOLVIDO: O bloco MedicoManager adicionado pela develop
+class MedicoManager(models.Manager):
+    """Normaliza clinica/clinicas/clinica_id/clinicaId e aplica no M2M após criar."""
+    def _to_ids(self, value):
+        if value is None:
+            return []
+        seq = value if isinstance(value, (list, tuple, set)) else [value]
+        out = []
+        for v in seq:
+            try:
+                out.append(int(getattr(v, 'id', v)))
+            except Exception:
+                continue
+        return out
+
+    def create(self, **kwargs):
+        # coleta aliases antes de criar
+        collected = []
+        for key in ['clinicas', 'clinica', 'clinica_id', 'clinicaId', 'clinic_id']:
+            if key in kwargs:
+                collected += self._to_ids(kwargs.pop(key))
+        # cria sem kwargs inválidos
+        instance = super().create(**kwargs)
+        # aplica M2M após persistir
+        if collected:
+            instance.clinicas.set(Clinica.objects.filter(id__in=collected))
+        return instance
+
 class Medico(models.Model):
     """
     Modelo de Perfil para o Médico, ligado ao modelo User principal.
@@ -36,17 +64,17 @@ class Medico(models.Model):
         default=EspecialidadeChoices.CLINICA_GERAL
     )
 
-    # Relação com a clínica. Se a clínica for deletada, o campo fica nulo.
-    clinica = models.ForeignKey(
+    # Troque ForeignKey por ManyToManyField para multi-clínica:
+    clinicas = models.ManyToManyField(
         Clinica,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True, # Permite que um médico seja cadastrado sem clínica inicialmente
-        related_name='medicos'
+        related_name='medicos',
+        blank=True
     )
 
     # Campo para data de nascimento, opcional.
     data_nascimento = models.DateField(_("Data de Nascimento"), null=True, blank=True)
+
+    objects = MedicoManager()  # <<< Mantenha esta linha também, essencial para usar o Manager!
 
     class Meta:
         verbose_name = "Médico"

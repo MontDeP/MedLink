@@ -5,6 +5,8 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
+import logging
+from django.db.models import Q, Exists, OuterRef
 
 from agendamentos.models import Consulta, ConsultaStatusLog
 from agendamentos.serializers import ConsultaSerializer
@@ -12,6 +14,8 @@ from agendamentos.consts import STATUS_CONSULTA_REAGENDAMENTO_SOLICITADO # <-- I
 from users.permissions import IsMedicoUser
 from .models import Medico
 from .serializers import MedicoSerializer
+
+logger = logging.getLogger(__name__)
 
 
 # --- VIEW DA AGENDA (LÓGICA CORRIGIDA) ---
@@ -116,30 +120,65 @@ class SolicitarReagendamentoAPIView(UpdateAPIView):
 
 # ... (o resto do arquivo)
 
+# ... (O código anterior, até o início de MedicoListView)
+
 class MedicoListView(ListAPIView):
     """
-    View para listar todos os médicos.
-    Acessível apenas por usuários autenticados.
-    FILTRA por especialidade se o query param 'especialidade' for passado.
+    View para listar médicos, que:
+    1. FILTRA por 'especialidade' se o query param for passado (para pacientes/mobile).
+    2. FILTRA por clínica quando o usuário é uma secretária/médico (controle de acesso).
     """
     serializer_class = MedicoSerializer
     permission_classes = [IsAuthenticated]
 
-    # 👇 SUBSTITUA A FUNÇÃO get_queryset INTEIRA POR ESTA 👇
     def get_queryset(self):
-        
-        # 1. Começa com um dicionário de filtros que sempre se aplicam
-        filtros = {
-            'user__is_active': True
-        }
-        
-        # 2. Pega o parâmetro 'especialidade' da URL
+        user = self.request.user
+        queryset = Medico.objects.select_related('user').all()
+
+        # 1. FILTRAGEM POR ESPECIALIDADE (Vinda da sua branch)
         especialidade = self.request.query_params.get('especialidade')
-        
-        # 3. Se o parâmetro foi fornecido, ADICIONA ao dicionário de filtros
         if especialidade:
-            filtros['especialidade'] = especialidade
-            
-        # 4. Executa a query UMA VEZ com TODOS os filtros necessários
-        #    O "select_related" vem antes do filter.
-        return Medico.objects.select_related('user').filter(**filtros).order_by('user__first_name')
+            # Aplica o filtro em TODOS os médicos antes de aplicar o controle de acesso
+            queryset = queryset.filter(especialidade=especialidade)
+
+        # 2. CONTROLE DE ACESSO/VISIBILIDADE (Vindo da branch develop)
+        if user.user_type == 'SECRETARIA' and hasattr(user, 'perfil_secretaria'):
+            clinica = user.perfil_secretaria.clinica
+
+            consultas_na_clinica = Exists(
+                Consulta.objects.filter(
+                    medico=OuterRef('user'),
+                    clinica=clinica,
+                )
+            )
+
+            # Filtra o queryset com base na clínica da secretária
+            return (
+                queryset
+                .annotate(_has_consulta_na_clinica=consultas_na_clinica)
+                .filter(
+                    Q(clinicas=clinica) | Q(_has_consulta_na_clinica=True)
+                )
+                .prefetch_related('clinicas')
+                .distinct()
+                .order_by('user__first_name', 'user__last_name')
+            )
+
+        if user.user_type == 'MEDICO' and hasattr(user, 'perfil_medico'):
+            clinicas = user.perfil_medico.clinicas.all()
+            # Filtra para ver seus próprios médicos e os médicos das suas clínicas
+            return (
+                queryset
+                .filter(Q(user=user) | Q(clinicas__in=clinicas))
+                .prefetch_related('clinicas')
+                .distinct()
+                .order_by('user__first_name', 'user__last_name')
+            )
+
+        if user.is_staff or user.is_superuser:
+            # Administrador/Staff vê tudo (já filtramos pela especialidade no início)
+            return queryset.all().order_by('user__first_name', 'user__last_name')
+
+        # Se for um usuário PAICIENTE (ou outro tipo não listado), ele vê o queryset
+        # já filtrado pela especialidade (se fornecida).
+        return queryset.order_by('user__first_name', 'user__last_name')

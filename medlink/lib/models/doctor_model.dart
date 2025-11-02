@@ -1,18 +1,33 @@
 class Doctor {
   final int id;
   final String fullName;
-  final String specialty;
+  final String? especialidade;
+  final String? crm;
 
-  Doctor({required this.id, required this.fullName, required this.specialty});
+  Doctor({
+    required this.id,
+    required this.fullName,
+    this.especialidade,
+    this.crm,
+  });
 
   factory Doctor.fromJson(Map<String, dynamic> json) {
-    // Acessa o objeto 'user' aninhado, se a API o enviar assim
-    final userJson = json['user'] as Map<String, dynamic>? ?? json;
+    print('Doctor.fromJson: $json'); // Debug
 
     return Doctor(
-      id: userJson['id'],
-      fullName: userJson['full_name'] ?? 'Nome não informado',
-      specialty: json['specialidade'] ?? 'Especialidade não informada',
+      id: (json['id'] ?? json['user_id'] ?? 0) as int,
+      fullName: (json['fullName'] ?? json['full_name'] ?? 'Médico') as String,
+      especialidade: json['especialidade'] as String?,
+      crm: json['crm'] as String?,
     );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'fullName': fullName,
+      'especialidade': especialidade,
+      'crm': crm,
+    };
   }
 }

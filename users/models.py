@@ -73,3 +73,28 @@ class User(AbstractBaseUser, PermissionsMixin):
 
     def get_full_name(self):
         return f"{self.first_name} {self.last_name}".strip()
+
+class Admin(models.Model):
+    user = models.OneToOneField(
+        User,
+        on_delete=models.CASCADE,
+        primary_key=True,
+        related_name='perfil_admin'
+    )
+    clinica = models.ForeignKey(
+        'clinicas.Clinica',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='admins'
+    )
+    data_contratacao = models.DateField(null=True, blank=True)
+
+    def __str__(self):
+        clinica_nome = self.clinica.nome_fantasia if self.clinica else 'Sem clínica'
+        return f"Admin: {self.user.get_full_name()} - {clinica_nome}"
+
+    class Meta:
+        db_table = 'admin'
+        verbose_name = 'Administrador'
+        verbose_name_plural = 'Administradores'

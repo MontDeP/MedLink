@@ -21,7 +21,8 @@ import 'views/pages/medico_dashboard_page.dart';
 import 'views/pages/medico_agenda_page.dart';
 import 'views/pages/reset_password_page.dart';
 import 'package:medlink/views/pages/create_password_page.dart';
-import 'package:medlink/views/pages/nova_consulta_page.dart'; 
+import 'views/pages/super_admin_dashboard_page.dart';
+import 'package:medlink/views/pages/nova_consulta_page.dart';
 import 'package:medlink/views/pages/remarcar_consulta_page.dart';
 
 // Controllers
@@ -101,6 +102,14 @@ class MyApp extends StatelessWidget {
           );
         }
 
+        // Rota simples: /super-admin/dashboard
+        if (settings.name == '/super-admin/dashboard') {
+          return GetPageRoute(
+            settings: settings,
+            page: () => const SuperAdminDashboardPage(),
+          );
+        }
+
         // Rota simples: /doctor/dashboard
         if (settings.name == '/doctor/dashboard') {
           return GetPageRoute(
@@ -123,22 +132,6 @@ class MyApp extends StatelessWidget {
             settings: settings,
             page: () => const MainNavigation(),
           );
-        }
-
-        // Rota para /admin/edit-user (que você já tinha)
-        if (settings.name == '/admin/edit-user') {
-          // Garante que o argumento é uma String antes de prosseguir
-          if (settings.arguments is String) {
-            final userId = settings.arguments as String;
-            return GetPageRoute(
-              settings: settings,
-              page: () => AdminEditUserPage(userId: userId),
-            );
-          } else {
-             // Se o argumento não for String, vai para Login para evitar erro
-             print("Erro: Argumento para /admin/edit-user não é String. Redirecionando para Login.");
-             return GetPageRoute(settings: settings, page: () => const LoginPage());
-          }
         }
 
         // Rota para a página de Nova Consulta
@@ -168,12 +161,12 @@ class MyApp extends StatelessWidget {
         }
 
         // Rota para /reset-password?uid=...&token=...
-        if (settings.name != null && settings.name!.startsWith('/reset-password')) {
+        if (settings.name != null &&
+            settings.name!.startsWith('/reset-password')) {
           final uri = Uri.parse(settings.name!);
 
           // Verifica se o caminho base é /reset-password
           if (uri.path == '/reset-password') {
-
             // Pega os parâmetros da query (o que vem depois do '?')
             final uid = uri.queryParameters['uid'];
             final token = uri.queryParameters['token'];
@@ -189,12 +182,12 @@ class MyApp extends StatelessWidget {
         }
 
         // Rota para /criar-senha?uid=...&token=...
-        if (settings.name != null && settings.name!.startsWith('/criar-senha')) {
+        if (settings.name != null &&
+            settings.name!.startsWith('/criar-senha')) {
           final uri = Uri.parse(settings.name!);
 
           // Verifica se o caminho base é /criar-senha
           if (uri.path == '/criar-senha') {
-
             // Pega os parâmetros da query (o que vem depois do '?')
             final uid = uri.queryParameters['uid'];
             final token = uri.queryParameters['token'];
@@ -211,11 +204,10 @@ class MyApp extends StatelessWidget {
         }
 
         // Se nenhuma rota bater, retorna para a página de Login
-        print("Aviso: Rota '${settings.name}' não encontrada. Redirecionando para Login.");
-        return GetPageRoute(
-          settings: settings,
-          page: () => const LoginPage(),
+        print(
+          "Aviso: Rota '${settings.name}' não encontrada. Redirecionando para Login.",
         );
+        return GetPageRoute(settings: settings, page: () => const LoginPage());
       },
     );
   }
