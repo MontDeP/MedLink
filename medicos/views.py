@@ -40,7 +40,7 @@ class MedicoAgendaAPIView(APIView):
             medico=medico,
             data_hora__year=year,
             data_hora__month=month
-        ).select_related('paciente__user').order_by('data_hora')
+        ).exclude(status_atual='CANCELADA').select_related('paciente__user').order_by('data_hora')
 
         # Agrupa as consultas por dia
         agenda_formatada = {}
@@ -107,3 +107,23 @@ class MedicoListView(ListAPIView):
     queryset = Medico.objects.select_related('user').filter(user__is_active=True)
     serializer_class = MedicoSerializer
     permission_classes = [IsAuthenticated]
+
+class EspecialidadeListView(APIView):
+    """
+    Lista as especialidades disponíveis no sistema (baseado no Medico.EspecialidadeChoices).
+    Acessível por qualquer usuário autenticado.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, *args, **kwargs):
+        # Acessa o 'choices' do modelo Medico
+        especialidades_raw = Medico.EspecialidadeChoices.choices
+        
+        # Formata para um JSON amigável para o app
+        # (O app vai receber: [{'key': 'CARDIOLOGIA', 'label': 'Cardiologia'}, ...])
+        especialidades_formatadas = [
+            {'key': key, 'label': label}
+            for key, label in especialidades_raw
+        ]
+        
+        return Response(especialidades_formatadas, status=status.HTTP_200_OK)

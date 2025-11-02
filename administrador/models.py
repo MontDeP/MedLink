@@ -40,3 +40,22 @@ class LogEntry(models.Model):
     def __str__(self):
         actor_cpf = self.actor.cpf if self.actor else "Sistema"
         return f"{self.timestamp.strftime('%d/%m/%Y %H:%M')} - {actor_cpf} - {self.get_action_type_display()}"
+    
+class admin(models.Model):
+    """
+    Modelo de Perfil para o Administrador, ligado ao User.
+    (Este era o modelo que estava faltando)
+    """
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        primary_key=True,
+        related_name='perfil_admin' # 'perfil_admin' como definido no signals
+    )
+
+    class Meta:
+        verbose_name = _("Perfil de Administrador")
+        verbose_name_plural = _("Perfis de Administrador")
+
+    def __str__(self):
+        return f"Perfil Admin de: {self.user.get_full_name()}"

@@ -13,6 +13,7 @@ class UserForDoctorSerializer(serializers.ModelSerializer):
 # Em medicos/serializers.py
 class MedicoSerializer(serializers.ModelSerializer):
     user = UserForDoctorSerializer(read_only=True)
+    especialidade_label = serializers.CharField(source='get_especialidade_display', read_only=True)
     class Meta:
         model = Medico
-        fields = ['crm', 'especialidade', 'user'] # <--- Correção: Removido 'user_ptr_id'
+        fields = ['crm', 'especialidade', 'especialidade_label', 'user']

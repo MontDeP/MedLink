@@ -20,7 +20,7 @@ import 'views/pages/medico_dashboard_page.dart';
 import 'views/pages/medico_agenda_page.dart';
 import 'views/pages/reset_password_page.dart';
 import 'package:medlink/views/pages/create_password_page.dart';
-import 'package:medlink/views/pages/nova_consulta_page.dart'; 
+import 'package:medlink/views/pages/nova_consulta_page.dart';
 import 'package:medlink/views/pages/remarcar_consulta_page.dart';
 import 'package:medlink/views/pages/cancelar_consulta_page.dart';
 
@@ -159,14 +159,22 @@ class MyApp extends StatelessWidget {
           );
         }
 
+<<<<<<< Updated upstream
        if (settings.name == '/cancelar-consulta') {
+=======
+        if (settings.name == '/cancelar-consulta') {
+>>>>>>> Stashed changes
           return GetPageRoute(
             settings: settings,
             page: () => const CancelarConsultaPage(), // Carrega a nova página
             transition: Transition.rightToLeft,
           );
         }
+<<<<<<< Updated upstream
         
+=======
+
+>>>>>>> Stashed changes
         // Rota para /reset-password?uid=...&token=...
         if (settings.name != null && settings.name!.startsWith('/reset-password')) {
           final uri = Uri.parse(settings.name!);

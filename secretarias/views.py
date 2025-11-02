@@ -61,7 +61,10 @@ class ConsultasHojeView(ListAPIView):
     def get_queryset(self):
         # Filtra as consultas para retornar apenas as de hoje, ordenadas por hora
         today = date.today()
-        return Consulta.objects.filter(data_hora__date=today).order_by('data_hora')
+        # A linha abaixo é a correta:
+        return Consulta.objects.filter(
+            data_hora__date=today
+        ).exclude(status_atual='CANCELADA').order_by('data_hora')
 
 
 class ConfirmarConsultaView(APIView):

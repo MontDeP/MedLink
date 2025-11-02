@@ -1,4 +1,4 @@
-// lib/controllers/home_controller.dart (NOVO ARQUIVO)
+// lib/controllers/home_controller.dart (CORRIGIDO PARA FILTRAR CANCELADAS)
 import 'package:flutter/material.dart';
 import 'package:table_calendar/table_calendar.dart';
 import 'package:medlink/services/api_service.dart';
@@ -43,7 +43,7 @@ class HomeController extends ChangeNotifier {
     try {
       final data = await _apiService.fetchDashboardData();
       _dashboardData = data;
-      _processEvents(data);
+      _processEvents(data); // Processa os eventos com os novos dados
     } catch (e) {
       debugPrint("Erro ao buscar dashboard: $e");
       _errorMessage = "Erro ao carregar dados. Tente novamente.";
@@ -53,20 +53,26 @@ class HomeController extends ChangeNotifier {
     notifyListeners();
   }
 
+  // --- FUNÇÃO CORRIGIDA ---
   // Processa a lista de consultas e agrupa por dia
   void _processEvents(DashboardData data) {
     _eventsMap.clear();
     for (var consulta in data.todasConsultas) {
-      DateTime diaConsultaUtc = DateTime.utc(
-        consulta.data.year,
-        consulta.data.month,
-        consulta.data.day,
-      );
+      if (consulta.status.toLowerCase() != 'cancelada') {
 
-      if (_eventsMap[diaConsultaUtc] == null) {
-        _eventsMap[diaConsultaUtc] = [];
-      }
-      _eventsMap[diaConsultaUtc]!.add(consulta);
+        DateTime diaConsultaUtc = DateTime.utc(
+          consulta.data.year,
+          consulta.data.month,
+          consulta.data.day,
+        );
+
+        if (_eventsMap[diaConsultaUtc] == null) {
+          _eventsMap[diaConsultaUtc] = [];
+        }
+        _eventsMap[diaConsultaUtc]!.add(consulta);
+      } 
+      
+      
     }
   }
 

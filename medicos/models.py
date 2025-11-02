@@ -4,7 +4,6 @@ from django.conf import settings
 from clinicas.models import Clinica
 from users.models import User
 from django.utils.translation import gettext_lazy as _
-
 class Medico(models.Model):
     """
     Modelo de Perfil para o Médico, ligado ao modelo User principal.

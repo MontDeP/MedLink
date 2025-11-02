@@ -60,6 +60,7 @@ INSTALLED_APPS = [
     'clinicas',
     'administrador',
     'configuracoes',
+    'notificacoes',
 ]
 
 MIDDLEWARE = [
