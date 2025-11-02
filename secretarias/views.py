@@ -71,9 +71,13 @@ class ConsultasHojeView(ListAPIView):
         today = date.today()
         # Filtra as consultas pela clínica da secretária
         clinica = self.request.user.perfil_secretaria.clinica
+        
+        # COMBINADO: Filtra pela data, pela clínica E exclui as consultas canceladas
         return Consulta.objects.filter(
             data_hora__date=today,
             clinica=clinica
+        ).exclude(
+            status_atual='CANCELADA' # Adicionado da sua feature mobile
         ).order_by('data_hora')
 
 

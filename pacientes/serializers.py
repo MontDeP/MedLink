@@ -5,6 +5,7 @@ from .models import Paciente
 from users.models import User
 from django.db import transaction
 import re 
+from notificacoes.models import Notificacao
 
 class PacienteCreateSerializer(serializers.ModelSerializer):
     cpf = serializers.CharField(write_only=True, required=True)
@@ -94,5 +95,11 @@ class PacienteProfileSerializer(serializers.ModelSerializer):
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
         instance.save()
-        
+
+        Notificacao.objects.create(
+            usuario=instance.user, # instance.user é o usuário paciente
+            titulo="Perfil atualizado",
+            mensagem="Os dados do seu perfil foram alterados com sucesso.",
+            tipo=Notificacao.TipoNotificacao.SEGURANCA
+        )
         return instance

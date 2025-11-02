@@ -3,12 +3,10 @@ import 'package:intl/intl.dart';
 import 'dart:convert';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:jwt_decoder/jwt_decoder.dart';
+import '../../models/appointment_model.dart';
 import 'package:get/get.dart'; // navegação pós-logout
 import '../../services/api_service.dart';
 import '../../models/dashboard_stats_model.dart';
-import 'package:medlink/models/appointment_model.dart';
-import 'package:medlink/models/patient_model.dart';
-import 'package:medlink/models/doctor_model.dart';
 import '../../models/patient_model.dart';
 import '../../models/doctor_model.dart';
 

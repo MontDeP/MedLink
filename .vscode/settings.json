@@ -1,4 +1,31 @@
 {
-    "commentTranslate.targetLanguage": "pt",
-    "cmake.sourceDirectory": "D:/periodo_8/Projeto_de_Sistemas/MedLink/medlink/linux"
+  "commentTranslate.targetLanguage": "pt",
+  "files.exclude": {
+    "**/.git": true,
+    "**/.svn": true,
+    "**/.hg": true,
+    "**/CVS": true,
+    "**/.DS_Store": true,
+    "**/Thumbs.db": true,
+    "**/__pycache__": true,
+    "**/*.pyc": true
+  },
+  "files.watcherExclude": {
+    "**/.git/objects/**": true,
+    "**/.git/subtree-cache/**": true,
+    "**/node_modules/*/**": true,
+    "**/.hg/store/**": true,
+    "**/.dart_tool/**": true,
+    "**/__pycache__/**": true,
+    "**/*.pyc": true
+  },
+  "search.exclude": {
+    "**/node_modules": true,
+    "**/bower_components": true,
+    "**/*.code-search": true,
+    "**/.dart_tool/**": true,
+    "**/__pycache__": true,
+    "**/*.pyc": true
+  },
+  "cmake.sourceDirectory": "C:/Users/letic/MedLink/medlink/linux" // **Mantenha o seu caminho local, ou remova esta linha se possível**
 }

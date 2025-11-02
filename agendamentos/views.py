@@ -12,8 +12,10 @@ from rest_framework.permissions import IsAuthenticated
 from .models import Consulta, Pagamento, ConsultaStatusLog, AnotacaoConsulta
 from .serializers import ConsultaSerializer, AnotacaoConsultaSerializer
 from users.permissions import IsMedicoOrSecretaria
-from .consts import STATUS_CONSULTA_CONCLUIDA, STATUS_CONSULTA_CHOICES
+from .consts import STATUS_CONSULTA_CONCLUIDA, STATUS_CONSULTA_CHOICES, STATUS_CONSULTA_PENDENTE
 from users.permissions import IsMedicoUser, HasRole
+from pacientes.models import Paciente
+from users.models import User
 
 
 class ConsultaAPIView(APIView):
@@ -329,12 +331,14 @@ class FinalizarConsultaAPIView(APIView):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
+# (Cole isso no lugar da classe PacienteMarcarConsultaView antiga)
+
 class PacienteMarcarConsultaView(APIView):
     """
     Endpoint para o PACIENTE logado marcar uma nova consulta.
     Recebe POST em /api/agendamentos/paciente-marcar/
     """
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated] # Garante que o paciente está logado
 
     def post(self, request, *args, **kwargs):
         # 1. Validação do Paciente
@@ -346,54 +350,39 @@ class PacienteMarcarConsultaView(APIView):
         except Paciente.DoesNotExist:
             return Response({"error": "Perfil de paciente não encontrado."}, status=status.HTTP_404_NOT_FOUND)
 
-        # 2. Obter dados da request (conforme api_service.dart)
-        medico_nome = request.data.get('medico_nome')
+        # 2. Obter dados da request (AGORA USANDO medico_id)
+        #    O Flutter envia: {'medico_id': 8, 'especialidade_nome': 'Cardiologia', ...}
+        
+        medico_id = request.data.get('medico_id') # <-- MUDANÇA AQUI
         especialidade_nome = request.data.get('especialidade_nome')
         data_hora_str = request.data.get('data_hora')
 
-        if not all([medico_nome, especialidade_nome, data_hora_str]):
-            return Response({"error": "Campos 'medico_nome', 'especialidade_nome' e 'data_hora' são obrigatórios."}, status=status.HTTP_400_BAD_REQUEST)
+        # <-- MUDANÇA AQUI (verificando medico_id)
+        if not all([medico_id, especialidade_nome, data_hora_str]):
+            return Response({"error": "Campos 'medico_id', 'especialidade_nome' e 'data_hora' são obrigatórios."}, status=status.HTTP_400_BAD_REQUEST)
 
         try:
-            # 3. Encontrar o médico pelo nome e especialidade
-            # Isso é frágil, pois depende dos nomes exatos do frontend
+            # 3. Encontrar o médico pelo ID (MUITO MAIS FÁCIL E SEGURO)
             
-            # Converte o nome da especialidade (Ex: "Cardiologia") para a chave (Ex: "CARDIOLOGIA")
-            especialidade_key = None
-            for key, value in Medico.EspecialidadeChoices.choices:
-                if value.lower() == especialidade_nome.lower():
-                    especialidade_key = key
-                    break
+            # Busca o médico (usuário) pelo ID que recebemos
+            medico_user = get_object_or_404(User, pk=medico_id, user_type='MEDICO')
             
-            if not especialidade_key:
-                return Response({"error": f"Especialidade '{especialidade_nome}' não encontrada."}, status=status.HTTP_404_NOT_FOUND)
-
-            # Busca Médicos pelo perfil e tipo de usuário
-            medicos_possiveis = User.objects.filter(
-                user_type='MEDICO',
-                perfil_medico__especialidade=especialidade_key
-            )
-
-            # Tenta encontrar o nome exato na lista
-            medico_user = None
-            for m in medicos_possiveis:
-                if m.get_full_name().lower() == medico_nome.lower():
-                    medico_user = m
-                    break
-            
-            if not medico_user:
-                 return Response({"error": f"Médico '{medico_nome}' não encontrado para esta especialidade."}, status=status.HTTP_404_NOT_FOUND)
+            # (Não precisamos mais daquela lógica de 'especialidade_key' ou de
+            #  looping para comparar nomes, pois o ID já é único)
 
             # 4. Obter a clínica do médico (PARA A SECRETÁRIA VER)
-            perfil = medico_user.perfil_medico
-            if not perfil or not perfil.clinica:
+            # (Acessa o perfil do médico para pegar a clínica)
+            perfil_medico = medico_user.perfil_medico
+            if not perfil_medico or not perfil_medico.clinica:
                 return Response({"error": "Médico não está associado a nenhuma clínica."}, status=status.HTTP_400_BAD_REQUEST)
+            
+            clinica = perfil_medico.clinica # Pega a clínica do perfil
 
             # 5. Criar a consulta
             Consulta.objects.create(
                 paciente=paciente,
                 medico=medico_user,
-                clinica=clinica,
+                clinica=clinica, # <-- MUDANÇA AQUI (usando a var clinica)
                 data_hora=data_hora_str,
                 status_atual=STATUS_CONSULTA_PENDENTE, # Importado de consts.py
                 valor=0.00 # Paciente não define valor, pode ser 0 ou um valor padrão
@@ -401,9 +390,11 @@ class PacienteMarcarConsultaView(APIView):
             
             return Response({"message": "Consulta marcada com sucesso!"}, status=status.HTTP_201_CREATED)
 
+        except User.DoesNotExist:
+             return Response({"error": f"Médico com ID '{medico_id}' não encontrado ou não é um médico."}, status=status.HTTP_404_NOT_FOUND)
         except Exception as e:
+            # Isso vai pegar qualquer outro erro (ex: data_hora em formato inválido)
             return Response({"error": f"Erro ao processar a marcação: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
 
 class PacienteRemarcarConsultaView(APIView):
     """
@@ -413,6 +404,7 @@ class PacienteRemarcarConsultaView(APIView):
     permission_classes = [IsAuthenticated]
 
     def patch(self, request, pk, *args, **kwargs):
+        # O 'try' principal que captura qualquer erro
         try:
             # 1. Verifica se o usuário é paciente
             if not request.user.user_type == 'PACIENTE':
@@ -424,13 +416,14 @@ class PacienteRemarcarConsultaView(APIView):
             # 2. Busca a consulta
             consulta = get_object_or_404(Consulta, pk=pk)
 
+            # 2.a. Verifica se a consulta pertence ao paciente logado
             if consulta.paciente.user != request.user:
                 return Response(
                     {"error": "Você não tem permissão para alterar esta consulta."},
                     status=status.HTTP_403_FORBIDDEN
                 )
 
-            # 3. Nova data
+            # 3. Pega a Nova data (String vinda do Flutter)
             data_hora_nova_str = request.data.get('data_hora')
             if not data_hora_nova_str:
                 return Response(
@@ -438,37 +431,51 @@ class PacienteRemarcarConsultaView(APIView):
                     status=status.HTTP_400_BAD_REQUEST
                 )
 
+            # 4. Tenta converter a string ISO (aware) para um datetime (naive)
+            #    Este bloco 'try...except' interno é SÓ para a conversão.
             try:
-                data_hora_nova = datetime.fromisoformat(data_hora_nova_str)
-                if timezone.is_naive(data_hora_nova):
-                    data_hora_nova = timezone.make_aware(data_hora_nova)
+                # 4.a. Converte a string ISO (que é 'aware') para um objeto datetime 'aware'
+                data_hora_aware = datetime.fromisoformat(data_hora_nova_str)
+
+                # 4.b. Converte o datetime 'aware' (provavelmente em UTC) para o fuso horário LOCAL do servidor
+                data_hora_local = data_hora_aware.astimezone(timezone.get_current_timezone())
+
+                # 4.c. Remove a informação de fuso horário, tornando-o 'naive'
+                #      Este é o formato que o banco de dados (com USE_TZ=False) espera.
+                data_hora_nova_naive = data_hora_local.replace(tzinfo=None)
+
             except ValueError:
                 return Response(
                     {"error": "Formato de data/hora inválido. Use o padrão ISO 8601 (YYYY-MM-DDTHH:MM:SS)."},
                     status=status.HTTP_400_BAD_REQUEST
                 )
 
-            # 4. Validação: só pode remarcar com pelo menos 3 dias de antecedência
-            data_consulta_aware = consulta.data_hora
-            if timezone.is_naive(data_consulta_aware):
-                data_consulta_aware = timezone.make_aware(data_consulta_aware)
+            # 5. Validação: só pode remarcar com pelo menos 3 dias de antecedência
+            
+            # Pega a data/hora atual (Naive, no fuso horário local do servidor)
+            agora_naive = datetime.now()
 
-            if (data_consulta_aware - timezone.now()).days < 3:
+            # Pega a data/hora da consulta (do DB, que já é Naive)
+            data_consulta_naive = consulta.data_hora
+
+            # Validação
+            if (data_consulta_naive - agora_naive).days < 3:
                 return Response(
                     {"error": "Não é possível remarcar com menos de 3 dias de antecedência."},
                     status=status.HTTP_400_BAD_REQUEST
                 )
 
-            # 5. Atualiza e salva
-            consulta.data_hora = data_hora_nova
+            # 6. Atualiza e salva (usando o datetime 'naive' que convertemos)
+            consulta.data_hora = data_hora_nova_naive # <-- Correção do erro 500
+            
             if 'REAGENDADA' in [choice[0] for choice in STATUS_CONSULTA_CHOICES]:
                 consulta.status_atual = 'REAGENDADA'
             else:
                 consulta.status_atual = STATUS_CONSULTA_PENDENTE
 
-            consulta.save()
+            consulta.save() 
 
-            # 6. Log
+            # 7. Log
             ConsultaStatusLog.objects.create(
                 consulta=consulta,
                 status_novo=consulta.status_atual,
@@ -477,8 +484,76 @@ class PacienteRemarcarConsultaView(APIView):
 
             return Response({"message": "Consulta remarcada com sucesso!"}, status=status.HTTP_200_OK)
 
+        # Este 'except' captura qualquer erro do 'try' principal
         except Exception as e:
+            print(f"Erro 500 em PacienteRemarcarConsultaView: {str(e)}") # Log para o console
             return Response(
                 {"error": f"Erro interno ao salvar a remarcação: {str(e)}"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
+        
+class PacienteCancelarConsultaView(APIView):
+    """
+    Endpoint para o PACIENTE logado cancelar uma consulta.
+    Recebe POST em /api/agendamentos/<int:pk>/paciente-cancelar/
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, pk, *args, **kwargs):
+        try:
+            # 1. Verifica se o usuário é paciente
+            if not request.user.user_type == 'PACIENTE':
+                return Response(
+                    {"error": "Apenas pacientes podem cancelar consultas."},
+                    status=status.HTTP_403_FORBIDDEN
+                )
+
+            # 2. Busca a consulta
+            consulta = get_object_or_404(Consulta, pk=pk)
+
+            # 3. Verifica se a consulta pertence ao paciente logado
+            if consulta.paciente.user != request.user:
+                return Response(
+                    {"error": "Você não tem permissão para cancelar esta consulta."},
+                    status=status.HTTP_403_FORBIDDEN
+                )
+
+            # 4. Regra de Negócio: Não pode cancelar com menos de 24h
+            agora_naive = datetime.now()
+            data_consulta_naive = consulta.data_hora
+            
+            if (data_consulta_naive - agora_naive).days < 1: # Menos de 1 dia
+                 return Response(
+                     {"error": "Consultas não podem ser canceladas com menos de 24h de antecedência."},
+                     status=status.HTTP_400_BAD_REQUEST
+                 )
+
+            # 5. Define o status como "CANCELADA"
+            # (Baseado no seu método 'delete' da ConsultaAPIView)
+            status_cancelada = 'CANCELADA' 
+            
+            # Verifica se já está cancelada
+            if consulta.status_atual == status_cancelada:
+                return Response({"message": "Esta consulta já está cancelada."}, status=status.HTTP_200_OK)
+
+            status_anterior = consulta.status_atual
+            consulta.status_atual = status_cancelada
+            consulta.save() 
+
+            # 6. Log
+            ConsultaStatusLog.objects.create(
+                consulta=consulta,
+                status_novo=consulta.status_atual,
+                pessoa=request.user
+            )
+
+            return Response({"message": "Consulta cancelada com sucesso!"}, status=status.HTTP_200_OK)
+
+        except Exception as e:
+            print(f"Erro 500 em PacienteCancelarConsultaView: {str(e)}") # Log
+            return Response(
+                {"error": f"Erro interno ao cancelar a consulta: {str(e)}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+# --- FIM DA ADIÇÃO ---
+

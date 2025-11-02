@@ -1,10 +1,10 @@
-# medicos/models.py
 from django.db import models
 from django.conf import settings
 from clinicas.models import Clinica
 from users.models import User
 from django.utils.translation import gettext_lazy as _
 
+# CÓDIGO RESOLVIDO: O bloco MedicoManager adicionado pela develop
 class MedicoManager(models.Manager):
     """Normaliza clinica/clinicas/clinica_id/clinicaId e aplica no M2M após criar."""
     def _to_ids(self, value):
@@ -74,7 +74,7 @@ class Medico(models.Model):
     # Campo para data de nascimento, opcional.
     data_nascimento = models.DateField(_("Data de Nascimento"), null=True, blank=True)
 
-    objects = MedicoManager()  # <<< usa o manager que normaliza clinicas
+    objects = MedicoManager()  # <<< Mantenha esta linha também, essencial para usar o Manager!
 
     class Meta:
         verbose_name = "Médico"

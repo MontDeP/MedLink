@@ -3,6 +3,9 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:medlink/models/dashboard_data_model.dart'; 
 import 'package:medlink/services/api_service.dart';
+import 'package:medlink/views/pages/nova_consulta_page.dart';
+
+// ... resto dos seus imports e o código da classe
 
 class RemarcarConsultaPage extends StatefulWidget {
   const RemarcarConsultaPage({super.key});
@@ -264,7 +267,7 @@ class _RemarcarConsultaPageState extends State<RemarcarConsultaPage> {
     return _buildFormularioRemarcacao();
   }
 
-  // --- ALTERAÇÃO SOLICITADA (POP-UP) APLICADA AQUI ---
+ 
   Widget _buildListaConsultas() {
     return ListView.builder(
       padding: const EdgeInsets.all(16),
@@ -275,19 +278,23 @@ class _RemarcarConsultaPageState extends State<RemarcarConsultaPage> {
           margin: const EdgeInsets.only(bottom: 12),
           child: ListTile(
             title: Text(consulta.especialidade),
-            subtitle: Text('Com ${consulta.medico}\n${DateFormat('dd/MM/yyyy \'às\' HH:mm').format(consulta.data)}'),
+            subtitle: Text(
+                'Com ${consulta.medico}\n${DateFormat('dd/MM/yyyy \'às\' HH:mm').format(consulta.data)}'),
             trailing: const Icon(Icons.arrow_forward_ios),
             onTap: () {
+              // --- INÍCIO DA ALTERAÇÃO ---
+              // 1. Verifica a regra dos 3 dias
               final difference = consulta.data.difference(DateTime.now());
-              
+
               if (difference.inDays < 3) {
-                // --- INÍCIO DA MUDANÇA (USA POP-UP) ---
+                // Se a regra for violada, mostra o pop-up de erro
                 showDialog(
                   context: context,
                   builder: (BuildContext dialogContext) {
                     return AlertDialog(
                       title: const Text('Atenção'),
-                      content: const Text('Não é possível remarcar consultas com menos de 3 dias de antecedência.'),
+                      content: const Text(
+                          'Não é possível remarcar consultas com menos de 3 dias de antecedência.'),
                       actions: [
                         TextButton(
                           child: const Text('OK'),
@@ -299,12 +306,18 @@ class _RemarcarConsultaPageState extends State<RemarcarConsultaPage> {
                     );
                   },
                 );
-                // --- FIM DA MUDANÇA ---
               } else {
-                // Se for permitido, avança para o formulário
-                setState(() {
-                  _consultaSelecionada = consulta;
-                });
+                // 2. Se a regra for OK, navega para a tela de Nova Consulta
+                //    passando a consulta antiga para pré-preenchimento.
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => NovaConsultaPage(
+                      isRescheduling: true,
+                      consultaAntiga: consulta,
+                    ),
+                  ),
+                );
               }
             },
           ),
@@ -312,7 +325,6 @@ class _RemarcarConsultaPageState extends State<RemarcarConsultaPage> {
       },
     );
   }
-  // --- FIM DA ALTERAÇÃO ---
 
   Widget _buildFormularioRemarcacao() {
     return Center(

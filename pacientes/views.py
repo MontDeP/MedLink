@@ -61,7 +61,9 @@ class PacientesDoDiaAPIView(APIView):
         consultas_de_hoje = Consulta.objects.filter(
             medico=medico,
             data_hora__date=hoje
-        ).select_related('paciente__user', 'medico__perfil_medico').order_by('data_hora')
+        ).exclude(status_atual='CANCELADA').select_related( # <-- ADICIONE O EXCLUDE AQUI
+            'paciente__user', 'medico__perfil_medico'
+        ).order_by('data_hora')
         
         dados_finais = []
         for consulta in consultas_de_hoje:
