@@ -1,17 +1,8 @@
 // lib/views/pages/configuracoes_page.dart
 import 'package:flutter/material.dart';
 
-class ConfiguracoesPage extends StatefulWidget {
+class ConfiguracoesPage extends StatelessWidget {
   const ConfiguracoesPage({super.key});
-
-  @override
-  State<ConfiguracoesPage> createState() => _ConfiguracoesPageState();
-}
-
-class _ConfiguracoesPageState extends State<ConfiguracoesPage> {
-  bool temaEscuro = false;
-  bool contrasteAlto = false;
-  bool loginBiometrico = false;
 
   @override
   Widget build(BuildContext context) {
@@ -24,6 +15,8 @@ class _ConfiguracoesPageState extends State<ConfiguracoesPage> {
       body: ListView(
         children: [
           const SizedBox(height: 8),
+
+          // ===== Seção 1 - Preferências do App =====
           const Padding(
             padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             child: Text(
@@ -31,44 +24,19 @@ class _ConfiguracoesPageState extends State<ConfiguracoesPage> {
               style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
             ),
           ),
-          SwitchListTile(
-            title: const Text('Tema escuro'),
-            value: temaEscuro,
-            onChanged: (value) {
-              setState(() => temaEscuro = value);
-              // Aqui você pode aplicar o tema global
-            },
-            secondary: const Icon(Icons.dark_mode),
-          ),
-          SwitchListTile(
-            title: const Text('Modo de contraste alto'),
-            value: contrasteAlto,
-            onChanged: (value) {
-              setState(() => contrasteAlto = value);
-            },
-            secondary: const Icon(Icons.contrast),
-          ),
           ListTile(
             leading: const Icon(Icons.text_fields),
             title: const Text('Tamanho da fonte'),
             subtitle: const Text('Normal'),
             trailing: const Icon(Icons.chevron_right),
             onTap: () {
-              // abrir modal para escolher tamanho da fonte
-            },
-          ),
-          ListTile(
-            leading: const Icon(Icons.language),
-            title: const Text('Idioma'),
-            subtitle: const Text('Português (Brasil)'),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: () {
-              // abrir opções de idioma
+              // TODO: abrir modal para escolher tamanho da fonte
             },
           ),
 
           const Divider(height: 24),
 
+          // ===== Seção 2 - Privacidade e Segurança =====
           const Padding(
             padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             child: Text(
@@ -76,33 +44,18 @@ class _ConfiguracoesPageState extends State<ConfiguracoesPage> {
               style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
             ),
           ),
-          SwitchListTile(
-            title: const Text('Login biométrico'),
-            value: loginBiometrico,
-            onChanged: (value) {
-              setState(() => loginBiometrico = value);
-            },
-            secondary: const Icon(Icons.fingerprint),
-          ),
-          ListTile(
-            leading: const Icon(Icons.security),
-            title: const Text('Gerenciar permissões'),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: () {
-              // abrir tela de permissões
-            },
-          ),
           ListTile(
             leading: const Icon(Icons.description),
             title: const Text('Política de privacidade'),
             trailing: const Icon(Icons.open_in_new),
             onTap: () {
-              // abrir link ou PDF da política
+              // TODO: abrir link ou PDF da política
             },
           ),
 
           const Divider(height: 24),
 
+          // ===== Seção 3 - Ajuda e Suporte =====
           const Padding(
             padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             child: Text(
@@ -111,30 +64,17 @@ class _ConfiguracoesPageState extends State<ConfiguracoesPage> {
             ),
           ),
           ListTile(
-            leading: const Icon(Icons.help_outline),
-            title: const Text('Central de ajuda'),
-            onTap: () {
-              // abrir página de FAQ
-            },
-          ),
-          ListTile(
             leading: const Icon(Icons.chat),
             title: const Text('Fale conosco'),
             subtitle: const Text('suporte@medlink.com'),
             onTap: () {
-              // abrir email ou chat
-            },
-          ),
-          ListTile(
-            leading: const Icon(Icons.star_rate),
-            title: const Text('Avaliar o aplicativo'),
-            onTap: () {
-              // redirecionar para loja
+              // TODO: abrir email ou chat
             },
           ),
 
           const Divider(height: 24),
 
+          // ===== Seção 4 - Sobre o MedLink =====
           const Padding(
             padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             child: Text(
@@ -151,9 +91,10 @@ class _ConfiguracoesPageState extends State<ConfiguracoesPage> {
             leading: const Icon(Icons.people),
             title: const Text('Créditos e equipe'),
             onTap: () {
-              // abrir modal com nomes e funções
+              // TODO: abrir modal com nomes e funções
             },
           ),
+
           const SizedBox(height: 24),
         ],
       ),
