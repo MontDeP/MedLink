@@ -1,5 +1,7 @@
 from rest_framework import serializers
-from .models import SystemSettings
+from .models import SystemSettings, UserSettings, SiteSettings
+
+
 
 class SystemSettingsSerializer(serializers.ModelSerializer):
     class Meta:
@@ -19,6 +21,32 @@ class SystemSettingsSerializer(serializers.ModelSerializer):
         para que o DRF retorne 400 Bad Request corretamente.
         """
         if not (0 <= value <= 168):
-            # Levanta a ValidationError do DRF
-            raise serializers.ValidationError(("Informe entre 0 e 168 horas."))
+            raise serializers.ValidationError("Informe entre 0 e 168 horas.")
         return value
+
+
+
+class UserSettingsSerializer(serializers.ModelSerializer):
+    """
+    Preferências individuais do usuário (ex: tamanho da fonte).
+    """
+    class Meta:
+        model = UserSettings
+        fields = ["font_size"]
+
+
+class SiteSettingsSerializer(serializers.ModelSerializer):
+    """
+    Configurações globais do app (usadas na tela de Configurações).
+    """
+    class Meta:
+        model = SiteSettings
+        fields = [
+            "app_version",
+            "contact_email",
+            "privacy_policy_url",
+            "privacy_policy_markdown",
+            "credits",
+            "updated_at",
+        ]
+        read_only_fields = ["updated_at"]
