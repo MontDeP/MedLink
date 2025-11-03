@@ -90,3 +90,24 @@ class AnotacaoConsultaSerializer(serializers.ModelSerializer):
         model = AnotacaoConsulta
         fields = ['consulta', 'conteudo', 'data_atualizacao']
         read_only_fields = ['consulta', 'data_atualizacao']
+
+class DashboardConsultaSerializer(serializers.ModelSerializer):
+    """
+    Serializer otimizado para o card de "Próxima Consulta" do dashboard do paciente.
+    Retorna os campos necessários para o front-end, incluindo ID e Status.
+    """
+
+    # O front-end espera 'medico', 'especialidade', 'data', 'local'
+    medico = serializers.CharField(source='medico.get_full_name') 
+    especialidade = serializers.CharField(source='medico.perfil_medico.get_especialidade_display')
+    data = serializers.DateTimeField(source='data_hora') 
+    local = serializers.CharField(source='clinica.nome_fantasia') 
+
+    # Renomeia 'status_atual' para 'status' (conforme o modelo do Flutter)
+    status = serializers.CharField(source='status_atual') 
+
+    class Meta:
+        model = Consulta
+        # --- CORREÇÃO APLICADA AQUI ---
+        # Adicionamos 'id' e 'status' à lista de campos
+        fields = ['id', 'medico', 'especialidade', 'data', 'local', 'status']

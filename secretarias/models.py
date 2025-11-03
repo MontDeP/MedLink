@@ -22,8 +22,7 @@ class Secretaria(models.Model):
         Clinica,
         on_delete=models.CASCADE,
         related_name='secretarias',
-        null=True,  # Permite que o campo seja nulo no banco de dados
-        blank=True # Torna o campo opcional nos formulários do admin
+        verbose_name="Clínica"
     )
     
     # Campo para data de nascimento, opcional e consistente com o modelo Médico.
@@ -35,8 +34,14 @@ class Secretaria(models.Model):
         ordering = ['user__first_name', 'user__last_name']
 
     def __str__(self):
-        return self.user.get_full_name()
+        clinica_nome = self.clinica.nome_fantasia if self.clinica else 'Sem clínica'
+        return f"{self.user.get_full_name()} - {clinica_nome}"
     
+    @property
+    def clinic_name(self):
+        """Helper para acessar o nome da clínica de forma segura"""
+        return self.clinica.nome if self.clinica else None
+
 class SecretariaUser(User):
     """Modelo Proxy para tratar utilizadores do tipo Secretária no admin."""
     class Meta:

@@ -4,13 +4,18 @@ from .serializers import MyTokenObtainPairSerializer
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
-from rest_framework.permissions import AllowAny
+from rest_framework.permissions import AllowAny, IsAuthenticated, IsAdminUser
 from django.contrib.auth import get_user_model
 from django.contrib.auth.tokens import default_token_generator
 from django.utils.http import urlsafe_base64_encode, urlsafe_base64_decode
 from django.utils.encoding import force_bytes, force_str
 from django.core.mail import send_mail
 from django.conf import settings
+from django.db.models import Q
+from django.shortcuts import get_object_or_404
+import logging
+
+logger = logging.getLogger(__name__)
 
 User = get_user_model()
 
@@ -127,3 +132,111 @@ class PasswordCreateConfirmView(APIView):
             return Response({'message': 'Senha definida com sucesso.'}, status=status.HTTP_200_OK)
         else:
             return Response({'error': 'O link para criar a senha é inválido ou expirou.'}, status=status.HTTP_400_BAD_REQUEST)
+
+class UserManagementView(APIView):
+    permission_classes = [IsAuthenticated, IsAdminUser]
+
+    def _user_clinica_id(self, u):
+        """Retorna clinica_id (FK) quando aplicável ou None."""
+        try:
+            if u.user_type == 'SECRETARIA' and hasattr(u, 'perfil_secretaria'):
+                return getattr(u.perfil_secretaria, 'clinica_id', None)
+            if u.user_type == 'PACIENTE' and hasattr(u, 'perfil_paciente'):
+                return getattr(u.perfil_paciente, 'clinica_id', None)
+            if u.user_type == 'ADMIN' and hasattr(u, 'perfil_admin'):
+                return getattr(u.perfil_admin, 'clinica_id', None)
+        except Exception:
+            return None
+        return None
+
+    def _user_clinica_ids_medico(self, u):
+        """Retorna lista de clinica_ids para médicos (M2M)."""
+        try:
+            if u.user_type == 'MEDICO' and hasattr(u, 'perfil_medico'):
+                return list(u.perfil_medico.clinicas.values_list('id', flat=True))
+        except Exception:
+            return []
+        return []
+
+    def get(self, request, pk=None):
+        user = request.user
+        clinica_param = request.query_params.get('clinica')
+        clinica_id_alvo = None
+        if clinica_param:
+            try:
+                clinica_id_alvo = int(clinica_param)
+            except Exception:
+                clinica_id_alvo = None
+
+        # LOG INICIAL
+        logger.info(f"[UserManagementView] user={user.id} ({user.get_full_name()}) type={getattr(user,'user_type',None)} is_staff={user.is_staff} is_superuser={user.is_superuser} clinica_param={clinica_param}")
+
+        if user.is_superuser and not clinica_id_alvo:
+            queryset = User.objects.all().order_by('first_name', 'last_name')
+        else:
+            if user.user_type == 'ADMIN' and hasattr(user, 'perfil_admin'):
+                if not clinica_id_alvo:
+                    clinica_id_alvo = getattr(user.perfil_admin, 'clinica_id', None)
+            if not clinica_id_alvo:
+                queryset = User.objects.none()
+            else:
+                queryset = User.objects.filter(
+                    Q(perfil_secretaria__clinica_id=clinica_id_alvo) |
+                    Q(perfil_medico__clinicas__id=clinica_id_alvo) |
+                    Q(perfil_paciente__clinica_id=clinica_id_alvo) |
+                    Q(perfil_admin__clinica_id=clinica_id_alvo)
+                ).distinct().order_by('first_name', 'last_name')
+
+        # LOG DO RESULTADO
+        try:
+            logger.info(f"[UserManagementView] clinica_id_alvo={clinica_id_alvo} count={queryset.count()}")
+        except Exception:
+            logger.info(f"[UserManagementView] clinica_id_alvo={clinica_id_alvo} count=?")
+
+        if pk:
+            user_obj = get_object_or_404(queryset, pk=pk)
+            data = {
+                'id': user_obj.id,
+                'first_name': user_obj.first_name,
+                'last_name': user_obj.last_name,
+                'full_name': user_obj.get_full_name(),
+                'cpf': user_obj.cpf,
+                'email': user_obj.email,
+                'user_type': user_obj.user_type,
+                'is_active': user_obj.is_active,
+                'date_joined': user_obj.date_joined,
+                'last_login': user_obj.last_login,
+                # Campos de clínica para o front filtrar/mostrar
+                'clinica_id': self._user_clinica_id(user_obj),
+                'clinica_ids': self._user_clinica_ids_medico(user_obj),
+            }
+            if user_obj.user_type == 'MEDICO' and hasattr(user_obj, 'perfil_medico'):
+                data['specialty'] = user_obj.perfil_medico.get_especialidade_display()
+                data['crm'] = user_obj.perfil_medico.crm
+            return Response(data)
+
+        users_data = []
+        for u in queryset:
+            user_data = {
+                'id': u.id,
+                'first_name': u.first_name,
+                'last_name': u.last_name,
+                'full_name': u.get_full_name(),
+                'cpf': u.cpf,
+                'email': u.email,
+                'user_type': u.user_type,
+                'is_active': u.is_active,
+                'date_joined': u.date_joined,
+                'last_login': u.last_login,
+                # Campos de clínica para o front filtrar/mostrar
+                'clinica_id': self._user_clinica_id(u),
+                'clinica_ids': self._user_clinica_ids_medico(u),
+            }
+            if u.user_type == 'MEDICO' and hasattr(u, 'perfil_medico'):
+                user_data['specialty'] = u.perfil_medico.get_especialidade_display()
+                user_data['crm'] = u.perfil_medico.crm
+            users_data.append(user_data)
+
+        return Response(users_data)
+
+    # ...existing code (post, put, patch, delete)...

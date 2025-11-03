@@ -3,8 +3,7 @@ import 'package:intl/intl.dart';
 import 'dart:convert';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:jwt_decoder/jwt_decoder.dart';
-import '../../models/appointment_model.dart';
-import '../../models/consulta_dashboard_model.dart';
+import 'package:get/get.dart'; // navegação pós-logout
 import '../../services/api_service.dart';
 import '../../models/dashboard_stats_model.dart';
 import 'package:medlink/models/appointment_model.dart';
@@ -43,6 +42,9 @@ class _SecretaryDashboardState extends State<SecretaryDashboard> {
   String _searchTerm = '';
   Appointment? _selectedAppointment;
   String _cancelReason = '';
+  int? _userClinicId;
+  int? clinicaId;
+  String _clinicName = 'Sua Clínica'; // Nome padrão da clínica
 
   // Constantes de Cor
   static const Color primaryColor = Color(0xFF0891B2);
@@ -60,12 +62,51 @@ class _SecretaryDashboardState extends State<SecretaryDashboard> {
         _filterAppointments();
       });
     });
+    _loadClinicaId();
+  }
+
+  // Carrega o ID da clínica a partir do token JWT e atualiza o estado.
+  Future<void> _loadClinicaId() async {
+    try {
+      final accessToken = await _storage.read(key: 'access_token');
+      if (accessToken == null) return;
+
+      final Map<String, dynamic> decoded = JwtDecoder.decode(accessToken);
+      if (!mounted) return;
+
+      setState(() {
+        // Alguns tokens podem usar 'clinica_id' ou 'clinicaId' dependendo do backend.
+        _userClinicId = decoded['clinica_id'] ?? decoded['clinicaId'];
+        clinicaId = _userClinicId;
+      });
+    } catch (_) {
+      // Falha ao obter/decodificar token: não bloqueia a UI, apenas ignora.
+    }
   }
 
   @override
   void dispose() {
     _searchController.dispose();
     super.dispose();
+  }
+
+  // Realiza logout limpando os tokens do armazenamento seguro e chamando o callback.
+  void _logout() async {
+    try {
+      // Limpa os tokens (ou tudo, por segurança)
+      await _storage.delete(key: 'access_token');
+      await _storage.delete(key: 'refresh_token');
+    } catch (_) {
+      // Ignora erros ao limpar o storage
+    }
+    // Se o caller forneceu um callback, usa-o
+    if (widget.onLogout != null) {
+      widget.onLogout!();
+      return;
+    }
+    // Fallback: força navegação para a tela de login
+    if (!mounted) return;
+    Get.offAllNamed('/'); // retorna para LoginPage
   }
 
   // Em _SecretaryDashboardState
@@ -96,27 +137,65 @@ class _SecretaryDashboardState extends State<SecretaryDashboard> {
         throw Exception('Token não encontrado. Faça o login novamente.');
       }
 
-      // Decodifica o token para pegar o nome do usuário
       Map<String, dynamic> decodedToken = JwtDecoder.decode(accessToken);
 
-      // Busca os dados da API em paralelo
-      final results = await Future.wait([
+      // Debug: imprima o token decodificado para verificar os campos
+      print("Token decodificado: $decodedToken");
+
+      // Tenta obter o nome da clínica de várias maneiras possíveis
+      String? clinicName =
+          decodedToken['clinic_name'] ??
+          decodedToken['clinica_nome'] ??
+          decodedToken['nome_clinica'];
+
+      // Busca os dados da API em paralelo (sem bloquear a busca do nome da clínica)
+      final resultsFuture = Future.wait([
         _apiService.getDashboardStats(accessToken),
         _apiService.getAppointments(accessToken),
         _apiService.getPatients(accessToken),
         _apiService.getDoctors(accessToken),
       ]);
 
+      // Se tivermos clinic_id, tenta buscar o nome real da clínica pela API
+      String? clinicNameFromApi;
+      if (_userClinicId != null) {
+        try {
+          clinicNameFromApi = await _apiService.getClinicName(
+            _userClinicId!,
+            accessToken,
+          );
+        } catch (_) {
+          clinicNameFromApi = null;
+        }
+      }
+
+      final results = await resultsFuture;
+
       if (!mounted) return;
+
+      // Debug: imprima os médicos carregados
+      final doctors = results[3] as List<Doctor>;
+      print('=== MÉDICOS CARREGADOS ===');
+      print('Total: ${doctors.length}');
+      for (var doc in doctors) {
+        print('- ${doc.fullName} (ID: ${doc.id})');
+      }
+      print('========================');
+
       setState(() {
         _secretaryName = decodedToken['full_name'] ?? 'Secretária';
+        _userClinicId = decodedToken['clinica_id'] != null
+            ? int.tryParse(decodedToken['clinica_id'].toString())
+            : null;
         _stats = results[0] as DashboardStats;
         _allAppointments = results[1] as List<Appointment>;
         _filteredAppointments = _allAppointments;
         _patients = results[2] as List<Patient>;
-        _doctors = results[3] as List<Doctor>;
+        _doctors = doctors;
+        _clinicName = clinicName ?? 'Clínica não associada';
       });
     } catch (e) {
+      print('ERRO ao carregar dados: $e');
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -270,12 +349,16 @@ class _SecretaryDashboardState extends State<SecretaryDashboard> {
                           icon: const Icon(Icons.access_time),
                           label: Text(selectedTime!.format(context)),
                           onPressed: () async {
-                            final time = await showTimePicker(
-                              context: context,
-                              initialTime: selectedTime!,
+                            final picked = await _openTimeSlotPicker(
+                              date: selectedDate!,
+                              medicoId: appointment.doctorId,
+                              pacienteId: appointment.patientId,
+                              medicoNome: appointment.doctorName,
+                              pacienteNome: appointment.patientName,
                             );
-                            if (time != null)
-                              setDialogState(() => selectedTime = time);
+                            if (picked != null) {
+                              setDialogState(() => selectedTime = picked);
+                            }
                           },
                         ),
                       ),
@@ -326,7 +409,7 @@ class _SecretaryDashboardState extends State<SecretaryDashboard> {
                                   backgroundColor: Colors.green,
                                 ),
                               );
-                              _loadInitialData();
+                              _loadInitialData(); // Atualiza a lista
                             } else {
                               throw Exception(
                                 'Falha ao remarcar: ${response.body}',
@@ -346,8 +429,15 @@ class _SecretaryDashboardState extends State<SecretaryDashboard> {
                           }
                         },
                   child: isDialogLoading
-                      ? const CircularProgressIndicator(color: Colors.white)
-                      : const Text('Salvar'),
+                      ? const SizedBox(
+                          height: 20,
+                          width: 20,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        )
+                      : const Text('Salvar Alterações'),
                 ),
               ],
             );
@@ -410,22 +500,45 @@ class _SecretaryDashboardState extends State<SecretaryDashboard> {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        const Row(
+        Row(
           children: [
-            Icon(Icons.local_hospital, size: 32, color: primaryColor),
-            SizedBox(width: 12),
+            const Icon(Icons.local_hospital, size: 32, color: primaryColor),
+            const SizedBox(width: 12),
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  'MedLink',
-                  style: TextStyle(
-                    fontSize: 24,
-                    fontWeight: FontWeight.bold,
-                    color: primaryColor,
-                  ),
+                Row(
+                  children: [
+                    const Text(
+                      'MedLink',
+                      style: TextStyle(
+                        fontSize: 24,
+                        fontWeight: FontWeight.bold,
+                        color: primaryColor,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 4,
+                      ),
+                      decoration: BoxDecoration(
+                        color: accentColor.withOpacity(0.3),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Text(
+                        _clinicName,
+                        style: TextStyle(
+                          fontSize: 16,
+                          color: Colors.grey[800],
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
-                Text(
+                const Text(
                   'Painel da Secretária',
                   style: TextStyle(color: Colors.grey),
                 ),
@@ -676,7 +789,7 @@ class _SecretaryDashboardState extends State<SecretaryDashboard> {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  'Médico: ${appointment.doctorName}',
+                  'Médico: Dr(a) ${appointment.doctorName}',
                   style: const TextStyle(fontSize: 14),
                 ),
               ],
@@ -839,74 +952,161 @@ class _SecretaryDashboardState extends State<SecretaryDashboard> {
     TimeOfDay? selectedTime;
     final valorController = TextEditingController();
     final typeController = TextEditingController();
+    String? modoAtendimento; // 'Presencial' ou 'Online'
     bool isDialogLoading = false;
+
+    bool _hasLocalSlotConflict(
+      DateTime dt,
+      int? pacienteId,
+      int? medicoId,
+      String? pacienteNome,
+      String? medicoNome,
+    ) {
+      // Mantém compatível usando a função de conflito central
+      return _hasLocalSlotConflictDt(
+        dt,
+        pacienteId: pacienteId,
+        medicoId: medicoId,
+        pacienteNome: pacienteNome,
+        medicoNome: medicoNome,
+      );
+    }
 
     showDialog(
       context: context,
       barrierDismissible: false,
       builder: (context) {
+        final baseBorder = OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: Colors.grey.shade300),
+        );
+        InputDecoration deco(String label, IconData icon) => InputDecoration(
+          labelText: label,
+          prefixIcon: Icon(icon, color: Colors.grey[700]),
+          filled: true,
+          fillColor: Colors.grey[50],
+          enabledBorder: baseBorder,
+          focusedBorder: baseBorder.copyWith(
+            borderSide: const BorderSide(color: primaryColor, width: 1.5),
+          ),
+        );
+
         return StatefulBuilder(
           builder: (context, setDialogState) {
             return AlertDialog(
-              title: const Text('Novo Agendamento'),
+              backgroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
+              titlePadding: const EdgeInsets.fromLTRB(24, 20, 24, 0),
+              contentPadding: const EdgeInsets.fromLTRB(24, 8, 24, 16),
+              actionsPadding: const EdgeInsets.fromLTRB(24, 0, 24, 20),
+              title: Row(
+                children: const [
+                  CircleAvatar(
+                    radius: 16,
+                    backgroundColor: primaryColor,
+                    child: Icon(Icons.add, color: Colors.white, size: 18),
+                  ),
+                  SizedBox(width: 12),
+                  Text(
+                    'Novo Agendamento',
+                    style: TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                ],
+              ),
               content: SingleChildScrollView(
                 child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
                   mainAxisSize: MainAxisSize.min,
                   children: [
+                    const SizedBox(height: 8),
+                    // Paciente
                     DropdownButtonFormField<Patient>(
-                      hint: const Text('Selecione o Paciente'),
                       value: selectedPatient,
-                      items: _patients.map((patient) {
-                        return DropdownMenuItem(
-                          value: patient,
-                          child: Text(
-                            patient.fullName,
-                          ), // <-- Corrigido para fullName
-                        );
-                      }).toList(),
-                      onChanged: (value) =>
-                          setDialogState(() => selectedPatient = value),
-                    ),
-                    const SizedBox(height: 16),
-                    DropdownButtonFormField<Doctor>(
-                      hint: const Text('Selecione o Médico'),
-                      value: selectedDoctor,
-                      items: _doctors
+                      decoration: deco('Paciente', Icons.person),
+                      items: _patients
                           .map(
-                            (doctor) => DropdownMenuItem(
-                              value: doctor,
-                              child: Text(doctor.fullName),
+                            (p) => DropdownMenuItem(
+                              value: p,
+                              child: Text(p.fullName),
                             ),
                           )
                           .toList(),
-                      onChanged: (value) =>
-                          setDialogState(() => selectedDoctor = value),
+                      onChanged: (v) =>
+                          setDialogState(() => selectedPatient = v),
                     ),
-                    const SizedBox(height: 16),
-                    TextField(
+                    const SizedBox(height: 12),
+                    // Médico
+                    DropdownButtonFormField<Doctor>(
+                      value: selectedDoctor,
+                      decoration: deco('Médico', Icons.medical_services),
+                      items: _doctors
+                          .map(
+                            (d) => DropdownMenuItem(
+                              value: d,
+                              child: Text('Dr(a) ${d.fullName}'),
+                            ),
+                          )
+                          .toList(),
+                      onChanged: (v) =>
+                          setDialogState(() => selectedDoctor = v),
+                    ),
+                    const SizedBox(height: 12),
+                    // Atendimento
+                    DropdownButtonFormField<String>(
+                      value: modoAtendimento,
+                      decoration: deco('Atendimento', Icons.video_call),
+                      items: const [
+                        DropdownMenuItem(
+                          value: 'Presencial',
+                          child: Text('Presencial'),
+                        ),
+                        DropdownMenuItem(
+                          value: 'Online',
+                          child: Text('Online'),
+                        ),
+                      ],
+                      onChanged: (v) =>
+                          setDialogState(() => modoAtendimento = v),
+                    ),
+                    const SizedBox(height: 12),
+                    // Tipo de consulta
+                    TextFormField(
                       controller: typeController,
-                      decoration: const InputDecoration(
-                        labelText: 'Tipo de Consulta',
+                      decoration: deco(
+                        'Tipo de Consulta (ex.: Primeira vez, Retorno)',
+                        Icons.category,
                       ),
                     ),
-                    const SizedBox(height: 16),
-                    TextField(
+                    const SizedBox(height: 12),
+                    // Valor
+                    TextFormField(
                       controller: valorController,
-                      decoration: const InputDecoration(labelText: 'Valor'),
                       keyboardType: TextInputType.number,
+                      decoration: deco('Valor', Icons.attach_money),
                     ),
                     const SizedBox(height: 16),
+                    // Seção: Data e Hora
                     Row(
                       children: [
                         Expanded(
-                          child: TextButton.icon(
+                          child: OutlinedButton.icon(
                             icon: const Icon(Icons.calendar_today),
                             label: Text(
                               selectedDate == null
-                                  ? 'Data'
+                                  ? 'Selecionar data'
                                   : DateFormat(
                                       'dd/MM/yyyy',
                                     ).format(selectedDate!),
+                            ),
+                            style: OutlinedButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              side: BorderSide(color: Colors.grey.shade300),
+                              foregroundColor: Colors.grey[800],
                             ),
                             onPressed: () async {
                               final date = await showDatePicker(
@@ -922,115 +1122,229 @@ class _SecretaryDashboardState extends State<SecretaryDashboard> {
                             },
                           ),
                         ),
+                        const SizedBox(width: 12),
                         Expanded(
-                          child: TextButton.icon(
+                          child: OutlinedButton.icon(
                             icon: const Icon(Icons.access_time),
                             label: Text(
                               selectedTime == null
-                                  ? 'Hora'
+                                  ? 'Selecionar hora'
                                   : selectedTime!.format(context),
                             ),
+                            style: OutlinedButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              side: BorderSide(color: Colors.grey.shade300),
+                              foregroundColor: Colors.grey[800],
+                            ),
                             onPressed: () async {
-                              final time = await showTimePicker(
-                                context: context,
-                                initialTime: TimeOfDay.now(),
+                              if (selectedDate == null ||
+                                  selectedDoctor == null ||
+                                  selectedPatient == null) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text(
+                                      'Selecione Paciente, Médico e Data primeiro.',
+                                    ),
+                                    backgroundColor: Colors.red,
+                                  ),
+                                );
+                                return;
+                              }
+                              final picked = await _openTimeSlotPicker(
+                                date: selectedDate!,
+                                medicoId: selectedDoctor!.id,
+                                pacienteId: selectedPatient!.id,
+                                medicoNome: selectedDoctor!.fullName,
+                                pacienteNome: selectedPatient!.fullName,
                               );
-                              if (time != null)
-                                setDialogState(() => selectedTime = time);
+                              if (picked != null)
+                                setDialogState(() => selectedTime = picked);
                             },
                           ),
                         ),
                       ],
                     ),
+                    if (selectedDate != null && selectedTime != null) ...[
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          const Icon(
+                            Icons.info_outline,
+                            size: 16,
+                            color: primaryColor,
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            'Selecionado: ${DateFormat('dd/MM/yyyy').format(selectedDate!)} às ${selectedTime!.format(context)}',
+                            style: TextStyle(
+                              color: Colors.grey[700],
+                              fontSize: 12,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
                   ],
                 ),
               ),
               actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(context),
-                  child: const Text('Cancelar'),
-                ),
-                ElevatedButton(
-                  onPressed: isDialogLoading
-                      ? null
-                      : () async {
-                          if (selectedPatient == null ||
-                              selectedDoctor == null ||
-                              selectedDate == null ||
-                              selectedTime == null) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text('Preencha todos os campos'),
-                                backgroundColor: Colors.red,
-                              ),
-                            );
-                            return;
-                          }
-                          setDialogState(() => isDialogLoading = true);
-                          try {
-                            final accessToken = await _storage.read(
-                              key: 'access_token',
-                            );
-                            if (accessToken == null)
-                              throw Exception('Token não encontrado');
-
-                            final appointmentDateTime = DateTime(
-                              selectedDate!.year,
-                              selectedDate!.month,
-                              selectedDate!.day,
-                              selectedTime!.hour,
-                              selectedTime!.minute,
-                            );
-                            final newAppointment = Appointment(
-                              id: 0, // O ID é gerado pelo backend
-                              dateTime: appointmentDateTime,
-                              status: 'PENDENTE',
-                              valor:
-                                  double.tryParse(valorController.text) ?? 0.0,
-                              patientName: '',
-                              doctorName: '',
-                              type: typeController.text,
-                              patientId: selectedPatient!.id,
-                              doctorId: selectedDoctor!.id,
-                              clinicId: 4, // TODO: Pegar o ID da clínica logada
-                            );
-
-                            final response = await _apiService
-                                .createAppointment(newAppointment, accessToken);
-
-                            if (!mounted) return;
-                            if (response.statusCode == 201) {
-                              Navigator.pop(context);
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
-                                  content: Text(
-                                    'Agendamento criado com sucesso!',
-                                  ),
-                                  backgroundColor: Colors.green,
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: () => Navigator.pop(context),
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          side: BorderSide(color: Colors.grey.shade300),
+                        ),
+                        child: const Text('Cancelar'),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: ElevatedButton.icon(
+                        onPressed: isDialogLoading
+                            ? null
+                            : () async {
+                                if (selectedPatient == null ||
+                                    selectedDoctor == null ||
+                                    selectedDate == null ||
+                                    selectedTime == null ||
+                                    modoAtendimento == null) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text(
+                                        'Preencha todos os campos (inclua o tipo de atendimento)',
+                                      ),
+                                      backgroundColor: Colors.red,
+                                    ),
+                                  );
+                                  return;
+                                }
+                                if (_userClinicId == null) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text(
+                                        'Erro: ID da clínica não encontrado. Faça o login novamente.',
+                                      ),
+                                      backgroundColor: Colors.red,
+                                    ),
+                                  );
+                                  return;
+                                }
+                                final proposed = DateTime(
+                                  selectedDate!.year,
+                                  selectedDate!.month,
+                                  selectedDate!.day,
+                                  selectedTime!.hour,
+                                  selectedTime!.minute,
+                                );
+                                final hasConflict = _hasLocalSlotConflict(
+                                  proposed,
+                                  selectedPatient!.id,
+                                  selectedDoctor!.id,
+                                  selectedPatient!.fullName,
+                                  selectedDoctor!.fullName,
+                                );
+                                if (hasConflict) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text(
+                                        'Conflito: há consulta a menos de 30 minutos para o médico ou paciente.',
+                                      ),
+                                      backgroundColor: Colors.red,
+                                    ),
+                                  );
+                                  return;
+                                }
+                                setDialogState(() => isDialogLoading = true);
+                                try {
+                                  final accessToken = await _storage.read(
+                                    key: 'access_token',
+                                  );
+                                  if (accessToken == null)
+                                    throw Exception('Token não encontrado');
+                                  final appointmentDateTime = proposed;
+                                  final newAppointment = Appointment(
+                                    id: 0,
+                                    dateTime: appointmentDateTime,
+                                    status: 'PENDENTE',
+                                    valor:
+                                        double.tryParse(valorController.text) ??
+                                        0.0,
+                                    patientName: '',
+                                    doctorName: '',
+                                    type: typeController.text.isEmpty
+                                        ? '(${modoAtendimento})'
+                                        : '${typeController.text} (${modoAtendimento})',
+                                    patientId: selectedPatient!.id,
+                                    doctorId: selectedDoctor!.id,
+                                    clinicId: _userClinicId,
+                                  );
+                                  final response = await _apiService
+                                      .createAppointment(
+                                        newAppointment,
+                                        accessToken,
+                                      );
+                                  if (!mounted) return;
+                                  if (response.statusCode == 201) {
+                                    Navigator.pop(context);
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(
+                                        content: Text(
+                                          'Agendamento criado com sucesso!',
+                                        ),
+                                        backgroundColor: Colors.green,
+                                      ),
+                                    );
+                                    _loadInitialData();
+                                  } else {
+                                    throw Exception(
+                                      'Falha ao criar agendamento: ${response.body}',
+                                    );
+                                  }
+                                } catch (e) {
+                                  if (!mounted) return;
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: Text('$e'),
+                                      backgroundColor: Colors.red,
+                                    ),
+                                  );
+                                } finally {
+                                  if (mounted)
+                                    setDialogState(
+                                      () => isDialogLoading = false,
+                                    );
+                                }
+                              },
+                        icon: isDialogLoading
+                            ? const SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(
+                                  color: Colors.white,
+                                  strokeWidth: 2,
                                 ),
-                              );
-                              _fetchAppointments(); // Atualiza a lista
-                            } else {
-                              throw Exception(
-                                'Falha ao criar agendamento: ${response.body}',
-                              );
-                            }
-                          } catch (e) {
-                            if (!mounted) return;
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Text('$e'),
-                                backgroundColor: Colors.red,
-                              ),
-                            );
-                          } finally {
-                            if (mounted)
-                              setDialogState(() => isDialogLoading = false);
-                          }
-                        },
-                  child: isDialogLoading
-                      ? const CircularProgressIndicator()
-                      : const Text('Salvar'),
+                              )
+                            : const Icon(Icons.save, size: 18),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: primaryColor,
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                        ),
+                        label: const Text('Salvar'),
+                      ),
+                    ),
+                  ],
                 ),
               ],
             );
@@ -1039,64 +1353,6 @@ class _SecretaryDashboardState extends State<SecretaryDashboard> {
       },
     );
   }
-
-  // As funções de confirmar e cancelar (_confirmAppointment, _cancelAppointment, etc.) continuam as mesmas
-
-  // Em _SecretaryDashboardState
-
-  Future<void> _fetchAppointments() async {
-    // Renomeado para refletir que busca tudo
-    setState(() => _isLoading = true);
-    try {
-      final accessToken = await _storage.read(key: 'access_token');
-      if (accessToken == null) throw Exception('Token não encontrado');
-
-      // Busca todos os dados necessários em paralelo
-      final results = await Future.wait([
-        _apiService.getAppointments(accessToken),
-        _apiService.getPatients(accessToken),
-        _apiService.getDoctors(accessToken),
-      ]);
-
-      if (!mounted) return;
-      setState(() {
-        _allAppointments = results[0] as List<Appointment>;
-        _filterAppointments(); // Aplica o filtro após atualizar a lista completa
-        _patients = results[1] as List<Patient>;
-        _doctors = results[2] as List<Doctor>;
-      });
-    } catch (e) {
-      // ... (seu tratamento de erro)
-    } finally {
-      if (mounted) setState(() => _isLoading = false);
-    }
-  }
-  // Em _SecretaryDashboardState
-
-  Future<void> _logout() async {
-    // 1. Apaga todos os tokens salvos no armazenamento seguro.
-    // É uma boa prática limpar tudo para garantir que nenhum dado antigo permaneça.
-    await _storage.deleteAll();
-
-    // 2. Navega para a tela de login ('/') e remove todas as telas anteriores da pilha.
-    // Isso impede que o usuário aperte "voltar" e retorne ao dashboard.
-    if (mounted) {
-      Navigator.of(context).pushNamedAndRemoveUntil('/', (route) => false);
-    }
-  }
-  // Em _SecretaryDashboardState
-
-  void _navigateToNewPatient() {
-    // Navega para a nova tela, passando o ID do usuário como argumento
-    Navigator.pushNamed(context, '/new-patient').then((_) {
-      // Esta função será chamada quando você VOLTAR da tela de cadastro.
-      // Recarregamos os dados para garantir que as listas de pacientes e
-      // agendamentos estejam atualizadas.
-      print("Voltando da tela de cadastro de paciente, atualizando dados...");
-      _loadInitialData();
-    });
-  }
-  // Em _SecretaryDashboardState
 
   void _showNewPatientDialog() {
     final formKey = GlobalKey<FormState>();
@@ -1110,10 +1366,49 @@ class _SecretaryDashboardState extends State<SecretaryDashboard> {
       context: context,
       barrierDismissible: false,
       builder: (context) {
+        final baseBorder = OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: Colors.grey.shade300),
+        );
+        InputDecoration deco(String label, IconData icon) => InputDecoration(
+          labelText: label,
+          prefixIcon: Icon(icon, color: Colors.grey[700]),
+          filled: true,
+          fillColor: Colors.grey[50],
+          enabledBorder: baseBorder,
+          focusedBorder: baseBorder.copyWith(
+            borderSide: const BorderSide(color: primaryColor, width: 1.5),
+          ),
+        );
+
         return StatefulBuilder(
           builder: (context, setDialogState) {
             return AlertDialog(
-              title: const Text('Cadastrar Novo Paciente'),
+              backgroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
+              titlePadding: const EdgeInsets.fromLTRB(24, 20, 24, 0),
+              contentPadding: const EdgeInsets.fromLTRB(24, 8, 24, 16),
+              actionsPadding: const EdgeInsets.fromLTRB(24, 0, 24, 20),
+              title: Row(
+                children: const [
+                  CircleAvatar(
+                    radius: 16,
+                    backgroundColor: primaryColor,
+                    child: Icon(
+                      Icons.person_add,
+                      color: Colors.white,
+                      size: 18,
+                    ),
+                  ),
+                  SizedBox(width: 12),
+                  Text(
+                    'Cadastrar Novo Paciente',
+                    style: TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                ],
+              ),
               content: SingleChildScrollView(
                 child: Form(
                   key: formKey,
@@ -1122,33 +1417,32 @@ class _SecretaryDashboardState extends State<SecretaryDashboard> {
                     children: [
                       TextFormField(
                         controller: nomeController,
-                        decoration: const InputDecoration(
-                          labelText: 'Nome Completo',
-                        ),
-                        validator: (v) =>
-                            v!.isEmpty ? 'Campo obrigatório' : null,
+                        decoration: deco('Nome Completo', Icons.badge),
+                        validator: (v) => v == null || v.trim().isEmpty
+                            ? 'Campo obrigatório'
+                            : null,
                       ),
-                      const SizedBox(height: 8),
+                      const SizedBox(height: 12),
                       TextFormField(
                         controller: cpfController,
-                        decoration: const InputDecoration(labelText: 'CPF'),
-                        validator: (v) =>
-                            v!.isEmpty ? 'Campo obrigatório' : null,
+                        decoration: deco('CPF', Icons.credit_card),
+                        validator: (v) => v == null || v.trim().isEmpty
+                            ? 'Campo obrigatório'
+                            : null,
                       ),
-                      const SizedBox(height: 8),
+                      const SizedBox(height: 12),
                       TextFormField(
                         controller: emailController,
-                        decoration: const InputDecoration(labelText: 'E-mail'),
+                        decoration: deco('E-mail', Icons.alternate_email),
                         keyboardType: TextInputType.emailAddress,
-                        validator: (v) =>
-                            v!.isEmpty ? 'Campo obrigatório' : null,
+                        validator: (v) => v == null || v.trim().isEmpty
+                            ? 'Campo obrigatório'
+                            : null,
                       ),
-                      const SizedBox(height: 8),
+                      const SizedBox(height: 12),
                       TextFormField(
                         controller: telefoneController,
-                        decoration: const InputDecoration(
-                          labelText: 'Telefone',
-                        ),
+                        decoration: deco('Telefone', Icons.phone),
                         keyboardType: TextInputType.phone,
                       ),
                     ],
@@ -1156,95 +1450,117 @@ class _SecretaryDashboardState extends State<SecretaryDashboard> {
                 ),
               ),
               actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(context),
-                  child: const Text('Cancelar'),
-                ),
-                ElevatedButton(
-                  onPressed: isDialogLoading
-                      ? null
-                      : () async {
-                          if (!(formKey.currentState?.validate() ?? false))
-                            return;
-
-                          setDialogState(() => isDialogLoading = true);
-
-                          try {
-                            final accessToken = await _storage.read(
-                              key: 'access_token',
-                            );
-                            if (accessToken == null)
-                              throw Exception('Token não encontrado');
-
-                            // Separa nome e sobrenome para enviar para a API de admin
-                            final nomeCompleto = nomeController.text.split(' ');
-                            final firstName = nomeCompleto.isNotEmpty
-                                ? nomeCompleto.first
-                                : '';
-                            final lastName = nomeCompleto.length > 1
-                                ? nomeCompleto.sublist(1).join(' ')
-                                : '';
-
-                            final userData = {
-                              "first_name": firstName,
-                              "last_name": lastName,
-                              "cpf": cpfController.text,
-                              "email": emailController.text,
-                              "telefone": telefoneController.text,
-                              "user_type": "PACIENTE",
-                              // A senha pode ser gerada pelo backend ou podemos enviar uma padrão
-                              "password": cpfController.text.replaceAll(
-                                RegExp(r'[^0-9]'),
-                                '',
-                              ),
-                            };
-
-                            final response = await _apiService.createPatient(
-                              userData,
-                              accessToken,
-                            );
-
-                            if (!mounted) return;
-                            if (response.statusCode == 201) {
-                              Navigator.pop(context);
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
-                                  content: Text('Paciente criado com sucesso!'),
-                                  backgroundColor: Colors.green,
-                                ),
-                              );
-                              _loadInitialData(); // Atualiza a lista de pacientes
-                            } else {
-                              final error = jsonDecode(
-                                utf8.decode(response.bodyBytes),
-                              );
-                              throw Exception(
-                                'Falha ao criar paciente: $error',
-                              );
-                            }
-                          } catch (e) {
-                            if (!mounted) return;
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Text('$e'),
-                                backgroundColor: Colors.red,
-                              ),
-                            );
-                          } finally {
-                            if (mounted)
-                              setDialogState(() => isDialogLoading = false);
-                          }
-                        },
-                  child: isDialogLoading
-                      ? const SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: Colors.white,
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: () => Navigator.pop(context),
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10),
                           ),
-                        )
-                      : const Text('Salvar'),
+                          side: BorderSide(color: Colors.grey.shade300),
+                        ),
+                        child: const Text('Cancelar'),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: ElevatedButton.icon(
+                        onPressed: isDialogLoading
+                            ? null
+                            : () async {
+                                if (!(formKey.currentState?.validate() ??
+                                    false))
+                                  return;
+                                setDialogState(() => isDialogLoading = true);
+                                try {
+                                  final accessToken = await _storage.read(
+                                    key: 'access_token',
+                                  );
+                                  if (accessToken == null)
+                                    throw Exception('Token não encontrado');
+
+                                  final partes = nomeController.text.split(' ');
+                                  final firstName = partes.isNotEmpty
+                                      ? partes.first
+                                      : '';
+                                  final lastName = partes.length > 1
+                                      ? partes.sublist(1).join(' ')
+                                      : '';
+
+                                  final userData = {
+                                    "first_name": firstName,
+                                    "last_name": lastName,
+                                    "cpf": cpfController.text,
+                                    "email": emailController.text,
+                                    "telefone": telefoneController.text,
+                                    "user_type": "PACIENTE",
+                                    "password": cpfController.text.replaceAll(
+                                      RegExp(r'[^0-9]'),
+                                      '',
+                                    ),
+                                  };
+
+                                  final response = await _apiService
+                                      .createPatient(userData, accessToken);
+                                  if (!mounted) return;
+                                  if (response.statusCode == 201) {
+                                    Navigator.pop(context);
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(
+                                        content: Text(
+                                          'Paciente criado com sucesso!',
+                                        ),
+                                        backgroundColor: Colors.green,
+                                      ),
+                                    );
+                                    _loadInitialData();
+                                  } else {
+                                    final error = jsonDecode(
+                                      utf8.decode(response.bodyBytes),
+                                    );
+                                    throw Exception(
+                                      'Falha ao criar paciente: $error',
+                                    );
+                                  }
+                                } catch (e) {
+                                  if (!mounted) return;
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: Text('$e'),
+                                      backgroundColor: Colors.red,
+                                    ),
+                                  );
+                                } finally {
+                                  if (mounted)
+                                    setDialogState(
+                                      () => isDialogLoading = false,
+                                    );
+                                }
+                              },
+                        icon: isDialogLoading
+                            ? const SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(
+                                  color: Colors.white,
+                                  strokeWidth: 2,
+                                ),
+                              )
+                            : const Icon(Icons.save, size: 18),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: primaryColor,
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                        ),
+                        label: const Text('Salvar'),
+                      ),
+                    ),
+                  ],
                 ),
               ],
             );
@@ -1253,9 +1569,6 @@ class _SecretaryDashboardState extends State<SecretaryDashboard> {
       },
     );
   }
-  // Em _SecretaryDashboardState
-
-  // Em _SecretaryDashboardState
 
   // Em _SecretaryDashboardState
 
@@ -1318,12 +1631,15 @@ class _SecretaryDashboardState extends State<SecretaryDashboard> {
                           icon: const Icon(Icons.access_time),
                           label: Text(selectedTime.format(context)),
                           onPressed: () async {
-                            final time = await showTimePicker(
-                              context: context,
-                              initialTime: selectedTime,
+                            final picked = await _openTimeSlotPicker(
+                              date: selectedDate,
+                              medicoId: appointment.doctorId,
+                              pacienteId: appointment.patientId,
+                              medicoNome: appointment.doctorName,
+                              pacienteNome: appointment.patientName,
                             );
-                            if (time != null) {
-                              setDialogState(() => selectedTime = time);
+                            if (picked != null) {
+                              setDialogState(() => selectedTime = picked);
                             }
                           },
                         ),
@@ -1413,10 +1729,6 @@ class _SecretaryDashboardState extends State<SecretaryDashboard> {
     );
   }
 
-  // E não se esqueça de ajustar a chamada no _buildAppointmentCard
-  // para passar o objeto `appointment` inteiro:
-  // onPressed: () => _editAppointment(appointment),
-
   //_buildCancelDialog
   Widget _buildCancelDialog() {
     bool isDialogLoading = false;
@@ -1471,6 +1783,111 @@ class _SecretaryDashboardState extends State<SecretaryDashboard> {
                       ),
                     )
                   : const Text('Cancelar Agendamento'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  // --- GERA SLOTS DE 30 MIN (08:00–20:00), PULA ALMOÇO (12:00–13:00) ---
+  List<DateTime> _generateTimeSlots(DateTime date) {
+    final start = DateTime(date.year, date.month, date.day, 8, 0);
+    final end = DateTime(date.year, date.month, date.day, 20, 0);
+    final slots = <DateTime>[];
+    var t = start;
+    while (t.isBefore(end)) {
+      // pula 12:00 e 12:30
+      if (!(t.hour == 12 && (t.minute == 0 || t.minute == 30))) {
+        slots.add(t);
+      }
+      t = t.add(const Duration(minutes: 30));
+    }
+    return slots;
+  }
+
+  // --- CONFLITO LOCAL: ±30min mesmo médico OU paciente ---
+  bool _hasLocalSlotConflictDt(
+    DateTime dt, {
+    int? pacienteId,
+    int? medicoId,
+    String? pacienteNome,
+    String? medicoNome,
+  }) {
+    for (final a in _allAppointments) {
+      final diff = a.dateTime.difference(dt).inMinutes.abs();
+      final sameDoctor =
+          (medicoId != null && a.doctorId != null && a.doctorId == medicoId) ||
+          (medicoNome != null &&
+              medicoNome.isNotEmpty &&
+              a.doctorName.toLowerCase() == medicoNome.toLowerCase());
+      final samePatient =
+          (pacienteId != null &&
+              a.patientId != null &&
+              a.patientId == pacienteId) ||
+          (pacienteNome != null &&
+              pacienteNome.isNotEmpty &&
+              a.patientName.toLowerCase() == pacienteNome.toLowerCase());
+      if (diff < 30 && (sameDoctor || samePatient)) return true;
+    }
+    return false;
+  }
+
+  // --- MODAL: seleciona horário em grade ---
+  Future<TimeOfDay?> _openTimeSlotPicker({
+    required DateTime date,
+    required int? medicoId,
+    required int? pacienteId,
+    String? medicoNome,
+    String? pacienteNome,
+  }) async {
+    final slots = _generateTimeSlots(date);
+    return await showDialog<TimeOfDay>(
+      context: context,
+      builder: (ctx) {
+        return AlertDialog(
+          title: const Text('Selecione um horário'),
+          content: SizedBox(
+            width: 360,
+            child: SingleChildScrollView(
+              child: Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: slots.map((dt) {
+                  final label = DateFormat('HH:mm').format(dt);
+                  final hasConflict = _hasLocalSlotConflictDt(
+                    dt,
+                    pacienteId: pacienteId,
+                    medicoId: medicoId,
+                    pacienteNome: pacienteNome,
+                    medicoNome: medicoNome,
+                  );
+                  return SizedBox(
+                    width: 96,
+                    child: OutlinedButton(
+                      onPressed: hasConflict
+                          ? null
+                          : () {
+                              Navigator.pop(
+                                ctx,
+                                TimeOfDay(hour: dt.hour, minute: dt.minute),
+                              );
+                            },
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 10),
+                        foregroundColor: hasConflict ? Colors.grey : null,
+                      ),
+                      child: Text(label),
+                    ),
+                  );
+                }).toList(),
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, null),
+              child: const Text('Fechar'),
             ),
           ],
         );
