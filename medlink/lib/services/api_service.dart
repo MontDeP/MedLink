@@ -1115,6 +1115,69 @@ class ApiService {
       return null;
     }
   }
+  // ============================
+  // CONFIGURAÇÕES (Settings API)
+  // ============================
+
+  /// /api/site/settings/  (público)
+  Future<Map<String, dynamic>?> getSiteSettings() async {
+    final url = Uri.parse("$baseUrl/api/site/settings/");
+    try {
+      final resp = await http.get(url);
+      if (resp.statusCode == 200) {
+        return json.decode(utf8.decode(resp.bodyBytes)) as Map<String, dynamic>;
+      }
+      debugPrint("getSiteSettings falhou: ${resp.statusCode} ${resp.body}");
+      return null;
+    } catch (e) {
+      debugPrint("Erro em getSiteSettings: $e");
+      return null;
+    }
+  }
+
+  /// /api/me/settings/  (autenticado)  -> { "font_size": "small|normal|large" }
+  Future<Map<String, dynamic>?> getMySettings() async {
+    if (_accessToken == null) throw Exception('Token não encontrado.');
+    final url = Uri.parse("$baseUrl/api/me/settings/");
+    try {
+      final resp = await http.get(
+        url,
+        headers: {"Authorization": "Bearer $_accessToken"},
+      );
+      if (resp.statusCode == 200) {
+        return json.decode(utf8.decode(resp.bodyBytes)) as Map<String, dynamic>;
+      }
+      debugPrint("getMySettings falhou: ${resp.statusCode} ${resp.body}");
+      return null;
+    } catch (e) {
+      debugPrint("Erro em getMySettings: $e");
+      return null;
+    }
+  }
+
+  /// PATCH /api/me/settings/  body: {"font_size": "..."}
+  Future<bool> updateMyFontSize(String size) async {
+    if (_accessToken == null) throw Exception('Token não encontrado.');
+    final url = Uri.parse("$baseUrl/api/me/settings/");
+    try {
+      final resp = await http.patch(
+        url,
+        headers: {
+          "Authorization": "Bearer $_accessToken",
+          "Content-Type": "application/json",
+        },
+        body: jsonEncode({"font_size": size}),
+      );
+      if (resp.statusCode == 200) return true;
+      debugPrint("updateMyFontSize falhou: ${resp.statusCode} ${resp.body}");
+      return false;
+    } catch (e) {
+      debugPrint("Erro em updateMyFontSize: $e");
+      return false;
+    }
+  }
+
+
 }
 
 // Classe Address (mantenha UMA definição ao final do arquivo)
