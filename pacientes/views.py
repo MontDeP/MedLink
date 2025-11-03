@@ -1,4 +1,4 @@
-# pacientes/views.py (VERSÃO CORRIGIDA - Corrigindo o FieldError do select_related)
+# pacientes/views.py (VERSÃO CORRIGIDA)
 
 from rest_framework import generics, status
 from rest_framework.permissions import AllowAny, IsAuthenticated
@@ -8,10 +8,12 @@ from django.utils import timezone
 from .models import Paciente
 from agendamentos.models import Consulta
 from users.permissions import IsMedicoOrSecretaria
+from users.models import User # CORREÇÃO 1: Importação do modelo User
 # --- MINHA ADIÇÃO DE IMPORT ---
 from .serializers import PacienteCreateSerializer, PacienteProfileSerializer
 # --- FIM DA MINHA ADIÇÃO ---
-from agendamentos.serializers import ConsultaSerializer
+# CORREÇÃO 2: Adiciona DashboardConsultaSerializer
+from agendamentos.serializers import ConsultaSerializer, DashboardConsultaSerializer 
 from django.db.models import Q
 
 # View para CRIAR pacientes (Esta classe estava faltando no seu arquivo anterior)
@@ -106,6 +108,7 @@ class PacienteDashboardView(APIView):
     def get(self, request): 
         usuario_logado = request.user
 
+        # Verifica se o usuário é do tipo PACIENTE (Corrigido pelo import do User)
         if usuario_logado.user_type != User.UserType.PACIENTE:
             return Response({"erro": "Acesso negado. Esta view é para pacientes."}, status=403)
         
@@ -117,7 +120,6 @@ class PacienteDashboardView(APIView):
         nome_paciente = usuario_logado.get_full_name()
 
         # --- 1. Busca TODAS as consultas futuras (como OBJETOS) ---
-        # --- ✨ CORREÇÃO AQUI: Removido 'medico__user' do select_related ✨ ---
         consultas_futuras = Consulta.objects.filter(
             paciente=paciente,
             data_hora__gte=timezone.now()
@@ -132,7 +134,7 @@ class PacienteDashboardView(APIView):
         serializer_context = {'request': request}
 
         # 4. Serializa a próxima consulta (se existir)
-        dados_proxima_consulta = None
+        dados_proxima_consulta = None # CORREÇÃO 3: Inicialização para evitar o NameError
         if proxima_consulta:
             dados_proxima_consulta = DashboardConsultaSerializer(
                 proxima_consulta, 
