@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:flutter/foundation.dart'; // Importado para usar debugPrint
+import 'dart:io' show Platform;
 import 'package:http/http.dart' as http;
 import 'package:medlink/views/pages/admin.dart'; // AdminUser
 import '../models/user_model.dart';
@@ -10,12 +11,39 @@ import '../models/doctor_model.dart';
 import '../models/paciente.dart'; // Paciente (do médico)
 import '../models/consultas.dart' as consultas_model;
 import '../models/dashboard_data_model.dart'; // DashboardData (do paciente)
-
+import '../models/clinica_model.dart';
+import '../models/address_model.dart';
+import 'package:intl/intl.dart';
 class ApiService {
-  // ✅ Base URL unificada
-  final String baseUrl = kIsWeb
-      ? "http://127.0.0.1:8000" // Para Web
-      : "http://10.0.2.2:8000"; // Para Emulador Android (verifique se é seu caso)
+  late final String baseUrl; 
+
+  ApiService() {
+    baseUrl = _getBaseUrl();
+  }
+
+  String _getBaseUrl() {
+    if (kIsWeb) {
+      // Se for Web
+      return "http://127.0.0.1:8000";
+    }
+
+    try {
+      if (Platform.isAndroid) {
+        // Se for Emulador Android
+        return "http://10.0.2.2:8000";
+      } else if (Platform.isWindows || Platform.isLinux || Platform.isMacOS || Platform.isIOS) {
+        // Se for Desktop (Windows, etc) ou Simulador iOS
+        return "http://127.0.0.1:8000";
+      } else {
+        // Fallback
+        return "http://127.0.0.1:8000"; 
+      }
+    } catch (e) {
+      // Se houver erro na deteção
+      return "http://127.0.0.1:8000";
+    }
+  }
+  // --- FIM DA CORREÇÃO DA BASEURL ---
 
   static String? _accessToken; // Token JWT salvo após o login
 
@@ -309,6 +337,98 @@ class ApiService {
     }).toList();
   }
 
+  // +++ INÍCIO DOS NOVOS MÉTODOS +++
+
+  /// Busca a lista de todas as clínicas para o paciente selecionar.
+  // +++ INÍCIO DOS NOVOS MÉTODOS DE AGENDAMENTO +++
+  
+  Future<List<Clinica>> getClinicasParaAgendamento() async {
+    final url = Uri.parse("$baseUrl/api/clinicas/"); 
+    if (_accessToken == null) throw Exception('Token não encontrado.');
+    debugPrint("A chamar API: $url");
+
+    final response = await http.get(
+      url,
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": "Bearer $_accessToken",
+        "Accept": "application/json" // <-- Força o Django a enviar JSON
+      },
+    );
+
+    if (response.statusCode == 200) {
+      debugPrint("Resposta da API: ${response.body}");
+      final dynamic decodedBody = json.decode(utf8.decode(response.bodyBytes));
+      
+      // O seu log do Django mostrou que /api/clinicas/ é paginada
+      if (decodedBody is Map && decodedBody.containsKey('results')) {
+          final List<dynamic> data = decodedBody['results'];
+           return data.map((json) => Clinica.fromJson(json)).toList();
+      } else if (decodedBody is List) {
+           return decodedBody.map((json) => Clinica.fromJson(json)).toList();
+      } else {
+          // Este é o erro que você estava a ter
+          throw Exception('Formato de resposta inesperado para clínicas');
+      }
+    } else {
+      debugPrint('Falha ao buscar clínicas: ${response.statusCode} | ${response.body}');
+      throw Exception('Falha ao carregar clínicas');
+    }
+  }
+
+  Future<List<String>> getEspecialidadesPorClinica(int clinicaId) async {
+    final url = Uri.parse("$baseUrl/api/clinicas/$clinicaId/especialidades/");
+    if (_accessToken == null) throw Exception('Token não encontrado.');
+
+    final response = await http.get(
+      url,
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": "Bearer $_accessToken",
+        "Accept": "application/json" // <-- Força o Django a enviar JSON
+      },
+    );
+
+    if (response.statusCode == 200) {
+      final dynamic decodedBody = json.decode(utf8.decode(response.bodyBytes));
+      if (decodedBody is List) {
+        return decodedBody.cast<String>();
+      } else {
+        return []; 
+      }
+    } else {
+      debugPrint('Falha ao buscar especialidades: ${response.statusCode} | ${response.body}');
+      throw Exception('Falha ao carregar especialidades da clínica');
+    }
+  }
+
+  Future<List<Doctor>> getMedicosPorClinicaEEspecialidade(int clinicaId, String especialidade) async {
+    final url = Uri.parse("$baseUrl/api/medicos/buscar/?clinica_id=$clinicaId&especialidade=$especialidade");
+    if (_accessToken == null) throw Exception('Token não encontrado.');
+
+    final response = await http.get(
+      url,
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": "Bearer $_accessToken",
+        "Accept": "application/json" // <-- Força o Django a enviar JSON
+      },
+    );
+
+    if (response.statusCode == 200) {
+      final dynamic decodedBody = json.decode(utf8.decode(response.bodyBytes));
+      if (decodedBody is List) {
+        return decodedBody.map((json) => Doctor.fromJson(json)).toList();
+      } else {
+        return [];
+      }
+    } else {
+      debugPrint('Falha ao buscar médicos: ${response.statusCode} | ${response.body}');
+      throw Exception('Falha ao carregar médicos');
+    }
+  }
+  // +++ FIM DOS NOVOS MÉTODOS ++++
+
   /// Permite ao paciente remarcar uma consulta existente.
   /// (Este método estava correto e é mantido)
   Future<bool> remarcarConsultaPaciente(
@@ -334,12 +454,32 @@ class ApiService {
     return response.statusCode == 200;
   }
 
+  Future<bool> cancelarConsultaPaciente(int consultaId) async {
+    // Chama o novo endpoint que criamos
+    final url = Uri.parse(
+      "$baseUrl/api/agendamentos/$consultaId/paciente-cancelar/",
+    );
+    if (_accessToken == null) throw Exception('Token não encontrado.');
+
+    // Usamos PATCH (sem corpo) apenas para acionar a ação no backend
+    final response = await http.patch(
+      url,
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": "Bearer $_accessToken",
+      },
+    );
+
+    // Sucesso se for 200 OK (pois retorna a consulta atualizada)
+    return response.statusCode == 200;
+  }
+
+  // +++ MÉTODO 'pacienteMarcarConsulta' CORRIGIDO +++
   Future<bool> pacienteMarcarConsulta(
-    String especialidade,
-    String medico,
+    int clinicaId, // <--- CORRIGIDO
+    int medicoId,   // <--- CORRIGIDO
     DateTime dataHora,
   ) async {
-    // Endpoint de exemplo: /api/agendamentos/paciente-marcar/
     final url = Uri.parse("$baseUrl/api/agendamentos/paciente-marcar/");
     if (_accessToken == null) throw Exception('Token não encontrado.');
 
@@ -348,19 +488,17 @@ class ApiService {
       headers: {
         "Content-Type": "application/json",
         "Authorization": "Bearer $_accessToken",
+        "Accept": "application/json" // <-- Força o Django a enviar JSON
       },
       body: jsonEncode({
-        'especialidade_nome':
-            especialidade, // O backend precisará buscar pelo nome
-        'medico_nome': medico, // O backend precisará buscar pelo nome
+        'clinica_id': clinicaId, // <--- CORRIGIDO
+        'medico_id': medicoId,   // <--- CORRIGIDO
         'data_hora': dataHora.toIso8601String(),
       }),
     );
 
-    // 201 Created é o código de sucesso para um POST (criação)
-    return response.statusCode == 201;
+    return response.statusCode == 201; // Sucesso é 201 Created
   }
-
   // Busca lista de pacientes (usado pela secretária e admin)
   Future<List<Patient>> getPatients(String accessToken) async {
     final url = Uri.parse("$baseUrl/api/pacientes/");
@@ -480,6 +618,30 @@ class ApiService {
       return body.map((key, value) => MapEntry(key, value as List<dynamic>));
     } else {
       throw Exception('Falha ao carregar a agenda: ${response.statusCode}');
+    }
+  }
+
+  Future<List<String>> getHorariosOcupados(int medicoId, DateTime data) async {
+    // Formata a data para YYYY-MM-DD, que é o que o Django espera
+    final String dataStr = DateFormat('yyyy-MM-dd').format(data);
+    
+    final url = Uri.parse("$baseUrl/api/medicos/$medicoId/horarios-ocupados/?data=$dataStr");
+    if (_accessToken == null) throw Exception('Token não encontrado.');
+
+    final response = await http.get(
+      url,
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": "Bearer $_accessToken",
+      },
+    );
+
+    if (response.statusCode == 200) {
+      final List<dynamic> body = json.decode(utf8.decode(response.bodyBytes));
+      return body.cast<String>(); // Retorna a Lista de horários em ISO String
+    } else {
+      debugPrint('Falha ao buscar horários: ${response.statusCode} | ${response.body}');
+      throw Exception('Falha ao carregar horários do médico');
     }
   }
 
@@ -1062,32 +1224,3 @@ class ApiService {
   }
 }
 
-// Classe Address (mantenha UMA definição ao final do arquivo)
-class Address {
-  final String cep;
-  final String logradouro;
-  final String complemento;
-  final String bairro;
-  final String localidade;
-  final String uf;
-
-  Address({
-    required this.cep,
-    required this.logradouro,
-    required this.complemento,
-    required this.bairro,
-    required this.localidade,
-    required this.uf,
-  });
-
-  factory Address.fromJson(Map<String, dynamic> json) {
-    return Address(
-      cep: json['cep'] ?? '',
-      logradouro: json['logradouro'] ?? '',
-      complemento: json['complemento'] ?? '',
-      bairro: json['bairro'] ?? '',
-      localidade: json['localidade'] ?? '',
-      uf: json['uf'] ?? '',
-    );
-  }
-}

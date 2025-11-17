@@ -32,6 +32,27 @@ class _SecretaryDashboardState extends State<SecretaryDashboard> {
   final FlutterSecureStorage _storage = const FlutterSecureStorage();
   final TextEditingController _searchController = TextEditingController();
 
+  void _showHorarioOcupadoDialog() {
+    showDialog(
+      context: context,
+      builder: (BuildContext dialogContext) {
+        return AlertDialog(
+          title: const Text('Horário Indisponível'),
+          content: const Text(
+              'Este horário (ou um horário próximo) já está agendado para o médico ou paciente selecionado.'),
+          actions: [
+            TextButton(
+              child: const Text('OK'),
+              onPressed: () {
+                Navigator.of(dialogContext).pop(); // Fecha o pop-up
+              },
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   List<Appointment> _allAppointments = []; // Guarda a lista original da API
   List<Appointment> _filteredAppointments = []; // Lista exibida na tela
   List<Patient> _patients = [];
@@ -182,14 +203,27 @@ class _SecretaryDashboardState extends State<SecretaryDashboard> {
       }
       print('========================');
 
+      // vvvv COLOQUE O FILTRO "ANTES" DO SETSTATE (AQUI) vvvv
+      
+      // 1. Pega a lista "crua" da API
+      final allFetchedAppointments = results[1] as List<Appointment>;
+
+      // 2. Aplica o filtro para manter APENAS ativas
+      final activeAppointments = allFetchedAppointments.where((consulta) {
+        // Lembre-se que seu modelo (appointment_model.dart) converte para minúsculas
+        return consulta.status == 'pendente' || consulta.status == 'confirmada';
+      }).toList();
+
+      // ^^^^ FIM DO BLOCO NOVO ^^^^
+
       setState(() {
         _secretaryName = decodedToken['full_name'] ?? 'Secretária';
         _userClinicId = decodedToken['clinica_id'] != null
             ? int.tryParse(decodedToken['clinica_id'].toString())
             : null;
         _stats = results[0] as DashboardStats;
-        _allAppointments = results[1] as List<Appointment>;
-        _filteredAppointments = _allAppointments;
+        _allAppointments = activeAppointments;      // <-- Use a lista filtrada
+        _filteredAppointments = activeAppointments; // <-- Use a lista filtrada
         _patients = results[2] as List<Patient>;
         _doctors = doctors;
         _clinicName = clinicName ?? 'Clínica não associada';
@@ -954,6 +988,8 @@ class _SecretaryDashboardState extends State<SecretaryDashboard> {
     final typeController = TextEditingController();
     String? modoAtendimento; // 'Presencial' ou 'Online'
     bool isDialogLoading = false;
+    bool _isLoadingHorarios = false;
+    Set<String> _horariosOcupados = {};
 
     bool _hasLocalSlotConflict(
       DateTime dt,
@@ -1833,7 +1869,27 @@ class _SecretaryDashboardState extends State<SecretaryDashboard> {
     return false;
   }
 
+  // Em medlink/lib/views/pages/dashboard_page.dart
+
+  /// Verifica APENAS conflitos locais do PACIENTE (baseado em _allAppointments)
+  bool _checkLocalPatientConflict(DateTime dt, int? pacienteId) {
+    if (pacienteId == null) return false;
+    
+    for (final a in _allAppointments) {
+      // Verifica se é o mesmo paciente
+      if (a.patientId != null && a.patientId == pacienteId) {
+        // Verifica se a diferença de tempo é menor que 30 minutos
+        final diff = a.dateTime.difference(dt).inMinutes.abs();
+        if (diff < 30) return true;
+      }
+    }
+    return false;
+  }
+
   // --- MODAL: seleciona horário em grade ---
+  // Em medlink/lib/views/pages/dashboard_page.dart
+
+  // --- MODAL: seleciona horário em grade (VERSÃO CORRIGIDA) ---
   Future<TimeOfDay?> _openTimeSlotPicker({
     required DateTime date,
     required int? medicoId,
@@ -1841,47 +1897,129 @@ class _SecretaryDashboardState extends State<SecretaryDashboard> {
     String? medicoNome,
     String? pacienteNome,
   }) async {
-    final slots = _generateTimeSlots(date);
+    // Se o médico não foi selecionado, não podemos buscar horários.
+    if (medicoId == null) {
+      // (Esta verificação já existe antes da chamada, mas é bom garantir)
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Erro: Médico não selecionado.'),
+        backgroundColor: Colors.red,
+      ));
+      return null;
+    }
+
     return await showDialog<TimeOfDay>(
       context: context,
       builder: (ctx) {
+        // Gera a lista de todos os slots possíveis
+        final slots = _generateTimeSlots(date);
+
         return AlertDialog(
           title: const Text('Selecione um horário'),
           content: SizedBox(
             width: 360,
-            child: SingleChildScrollView(
-              child: Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: slots.map((dt) {
-                  final label = DateFormat('HH:mm').format(dt);
-                  final hasConflict = _hasLocalSlotConflictDt(
-                    dt,
-                    pacienteId: pacienteId,
-                    medicoId: medicoId,
-                    pacienteNome: pacienteNome,
-                    medicoNome: medicoNome,
+            child: FutureBuilder<List<String>>(
+              // 1. CHAMA A API para buscar os horários ocupados do MÉDICO
+              future: _apiService.getHorariosOcupados(medicoId, date),
+
+              builder: (context, snapshot) {
+                // 2. MOSTRA O LOADING
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const Center(
+                    child: Padding(
+                      padding: EdgeInsets.all(32.0),
+                      child: CircularProgressIndicator(),
+                    ),
                   );
-                  return SizedBox(
-                    width: 96,
-                    child: OutlinedButton(
-                      onPressed: hasConflict
-                          ? null
-                          : () {
+                }
+
+                // 3. MOSTRA O ERRO
+                if (snapshot.hasError) {
+                  return Center(
+                    child: Text('Erro ao carregar horários: ${snapshot.error}'),
+                  );
+                }
+
+                // 4. SUCESSO: Processa os dados da API
+                final horariosIso = snapshot.data ?? [];
+                
+                // Processa os horários da API (incluindo a "janela" de 30min)
+                final Set<String> horariosOcupadosApi = {};
+                for (final isoString in horariosIso) {
+                  try {
+                    final dataHoraOcupada = DateTime.parse(isoString).toLocal();
+                    
+                    // Adiciona o slot exato
+                    horariosOcupadosApi
+                        .add(DateFormat('HH:mm').format(dataHoraOcupada));
+                    
+                    // Adiciona a "janela de conflito" (30 min antes e 30 min depois)
+                    final trintaMinAntes =
+                        dataHoraOcupada.subtract(const Duration(minutes: 30));
+                    horariosOcupadosApi
+                        .add(DateFormat('HH:mm').format(trintaMinAntes));
+                    
+                    final trintaMinDepois =
+                        dataHoraOcupada.add(const Duration(minutes: 30));
+                    horariosOcupadosApi
+                        .add(DateFormat('HH:mm').format(trintaMinDepois));
+                  } catch (e) {
+                    print("Erro ao parsear data: $isoString");
+                  }
+                }
+                
+                // 5. RENDERIZA A GRADE
+                return SingleChildScrollView(
+                  child: Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: slots.map((dt) {
+                      final label = DateFormat('HH:mm').format(dt);
+
+                      // --- LÓGICA DE CONFLITO COMBINADA ---
+                      // 1. O médico está ocupado (via API)?
+                      final bool medicoOcupado =
+                          horariosOcupadosApi.contains(label);
+                      
+                      // 2. O paciente está ocupado (via lista local _allAppointments)?
+                      final bool pacienteOcupado =
+                          _checkLocalPatientConflict(dt, pacienteId);
+                      
+                      final bool hasConflict = medicoOcupado || pacienteOcupado;
+                      // --- FIM DA LÓGICA ---
+
+                      return SizedBox(
+                        width: 96,
+                        child: OutlinedButton(
+                          onPressed: () {
+                            if (hasConflict) {
+                              _showHorarioOcupadoDialog();
+                            } else {
                               Navigator.pop(
                                 ctx,
                                 TimeOfDay(hour: dt.hour, minute: dt.minute),
                               );
-                            },
-                      style: OutlinedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 10),
-                        foregroundColor: hasConflict ? Colors.grey : null,
-                      ),
-                      child: Text(label),
-                    ),
-                  );
-                }).toList(),
-              ),
+                            }
+                          },
+                          style: OutlinedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(vertical: 10),
+                            // Estilo visual de "ocupado"
+                            foregroundColor: hasConflict ? Colors.grey[600] : Colors.black87,
+                            backgroundColor: hasConflict ? Colors.grey[200] : null,
+                          ),
+                          child: Text(
+                            label,
+                            style: TextStyle(
+                              decoration: hasConflict
+                                  ? TextDecoration.lineThrough
+                                  : TextDecoration.none,
+                            ),
+                          ),
+                        ),
+                      );
+                    }).toList(),
+                  ),
+                );
+              },
             ),
           ),
           actions: [

@@ -1,5 +1,5 @@
 from django.urls import path
-from .views import ConsultaAPIView, ConsultaStatusUpdateView, PagamentoUpdateView, AnotacaoConsultaView, FinalizarConsultaAPIView, PacienteMarcarConsultaView, PacienteRemarcarConsultaView
+from .views import ConsultaAPIView, ConsultaStatusUpdateView, PagamentoUpdateView, AnotacaoConsultaView, FinalizarConsultaAPIView, PacienteMarcarConsultaView, PacienteRemarcarConsultaView, PacienteCancelarConsultaView
 
 urlpatterns = [
     # Listar/criar consultas
@@ -17,4 +17,5 @@ urlpatterns = [
 
     path('paciente-marcar/', PacienteMarcarConsultaView.as_view(), name='paciente-marcar-consulta' ),
     path('<int:pk>/paciente-remarcar/', PacienteRemarcarConsultaView.as_view(), name='paciente-remarcar-consulta'),
+    path('<int:pk>/paciente-cancelar/', PacienteCancelarConsultaView.as_view(), name='paciente-cancelar-consulta'),
 ]

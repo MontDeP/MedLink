@@ -4,6 +4,7 @@ from django.conf import settings
 from clinicas.models import Clinica
 from users.models import User
 from django.utils.translation import gettext_lazy as _
+from decimal import Decimal
 
 class MedicoManager(models.Manager):
     """Normaliza clinica/clinicas/clinica_id/clinicaId e aplica no M2M após criar."""
@@ -62,6 +63,15 @@ class Medico(models.Model):
         max_length=50,
         choices=EspecialidadeChoices.choices,
         default=EspecialidadeChoices.CLINICA_GERAL
+    )
+
+    valor_consulta = models.DecimalField(
+        _("Valor da Consulta Padrão"),
+        max_digits=10,
+        decimal_places=2,
+        null=True, # Permite nulo para médicos antigos que não têm o valor
+        blank=True, # Permite ser opcional no Admin
+        default=Decimal('0.00') # Um valor padrão seguro
     )
 
     # Troque ForeignKey por ManyToManyField para multi-clínica:

@@ -10,6 +10,7 @@ import 'package:medlink/views/pages/main_navigation.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter_web_plugins/url_strategy.dart';
 
+
 // Views
 import 'views/pages/login.dart';
 import 'views/pages/register.dart';
@@ -23,6 +24,7 @@ import 'package:medlink/views/pages/create_password_page.dart';
 import 'views/pages/super_admin_dashboard_page.dart';
 import 'package:medlink/views/pages/nova_consulta_page.dart';
 import 'package:medlink/views/pages/remarcar_consulta_page.dart';
+import 'package:medlink/views/pages/cancelar_consulta_page.dart';
 
 // Controllers
 import 'controllers/paciente_controller.dart';
@@ -147,6 +149,14 @@ class MyApp extends StatelessWidget {
           return GetPageRoute(
             settings: settings,
             page: () => const RemarcarConsultaPage(),
+            transition: Transition.rightToLeft,
+          );
+        }
+
+        if (settings.name == '/cancelar-consulta') {
+          return GetPageRoute(
+            settings: settings,
+            page: () => const CancelarConsultaPage(), // Nova página
             transition: Transition.rightToLeft,
           );
         }

@@ -14,6 +14,7 @@ from .serializers import PacienteCreateSerializer, PacienteProfileSerializer
 # --- FIM DA MINHA ADIÇÃO ---
 # CORREÇÃO 2: Adiciona DashboardConsultaSerializer
 from agendamentos.serializers import ConsultaSerializer, DashboardConsultaSerializer 
+from agendamentos.consts import STATUS_CONSULTA_PENDENTE, STATUS_CONSULTA_CONFIRMADA
 from django.db.models import Q
 
 # View para CRIAR pacientes (Esta classe estava faltando no seu arquivo anterior)
@@ -122,9 +123,11 @@ class PacienteDashboardView(APIView):
         # --- 1. Busca TODAS as consultas futuras (como OBJETOS) ---
         consultas_futuras = Consulta.objects.filter(
             paciente=paciente,
-            data_hora__gte=timezone.now()
+            data_hora__gte=timezone.now(),
+            # Filtra apenas por status que o paciente deve ver
+            status_atual__in=[STATUS_CONSULTA_PENDENTE, STATUS_CONSULTA_CONFIRMADA]
         ).select_related(
-            'medico__perfil_medico', 'clinica' # 'medico__user' foi removido daqui
+            'medico__perfil_medico', 'clinica'
         ).order_by('data_hora')
 
         # 2. A "próxima consulta" é apenas a primeira desta lista

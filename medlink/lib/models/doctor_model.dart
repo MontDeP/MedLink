@@ -1,3 +1,5 @@
+// lib/models/doctor_model.dart (VERSÃO CORRIGIDA)
+
 class Doctor {
   final int id;
   final String fullName;
@@ -12,11 +14,18 @@ class Doctor {
   });
 
   factory Doctor.fromJson(Map<String, dynamic> json) {
-    print('Doctor.fromJson: $json'); // Debug
+    // print('Doctor.fromJson: $json'); // Debug
 
     return Doctor(
+      // Pega 'id' (da API de admin) ou 'user_id' (da API de paciente)
       id: (json['id'] ?? json['user_id'] ?? 0) as int,
-      fullName: (json['fullName'] ?? json['full_name'] ?? 'Médico') as String,
+
+      // CORREÇÃO: Adicionado 'nome_completo'
+      fullName: (json['fullName'] ?? 
+                 json['full_name'] ?? 
+                 json['nome_completo'] ?? // <--- Chave que faltava
+                 'Médico') as String,
+                 
       especialidade: json['especialidade'] as String?,
       crm: json['crm'] as String?,
     );

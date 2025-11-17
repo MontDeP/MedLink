@@ -27,6 +27,11 @@ class Consulta(models.Model):
         decimal_places=2,
         verbose_name=_('Valor da Consulta')
     )
+
+    remarcacoes_paciente = models.PositiveIntegerField(
+        default=0,
+        verbose_name=_('Nº de Remarcações pelo Paciente')
+    )
     
     # Relações de Chave Estrangeira com outros modelos:
     # 1. Com o Paciente

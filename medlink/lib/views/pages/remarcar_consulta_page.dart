@@ -59,20 +59,23 @@ class _RemarcarConsultaPageState extends State<RemarcarConsultaPage> {
   }
 
   Future<void> _selecionarData(BuildContext context) async {
-    final DateTime dataMinima = DateTime.now().add(const Duration(days: 3));
+    // vvvv LÓGICA NOVA (24 HORAS / 1 DIA) vvvv
+    // Permite selecionar a partir de amanhã. A regra de "exatamente 24h"
+    // já foi verificada no passo anterior.
+    final DateTime dataMinima = DateTime.now().add(const Duration(days: 1));
 
     DateTime? picked = await showDatePicker(
       context: context,
-      initialDate: _consultaSelecionada!.data.isAfter(dataMinima) 
-                   ? _consultaSelecionada!.data 
-                   : dataMinima,
-      firstDate: dataMinima.subtract(const Duration(days: 1)),
+      // Inicia o calendário no dia seguinte
+      initialDate: dataMinima, 
+      // O primeiro dia selecionável é amanhã
+      firstDate: dataMinima,
       lastDate: DateTime(2030),
-      selectableDayPredicate: (DateTime day) {
-        return day.isAfter(DateTime.now().add(const Duration(days: 2)));
-      },
-      helpText: 'Só é possível remarcar para daqui a 3 dias.',
+      // (Não precisamos mais do selectableDayPredicate complexo)
+      helpText: 'Selecione a nova data (mínimo 24h de antecedência).',
+      // ^^^^ LÓGICA NOVA (24 HORAS / 1 DIA) ^^^^
     );
+    
     if (picked != null) {
       setState(() {
         _selectedDate = picked;
@@ -81,18 +84,31 @@ class _RemarcarConsultaPageState extends State<RemarcarConsultaPage> {
     }
   }
 
+  // Em: medlink/lib/views/pages/remarcar_consulta_page.dart
+
+  // --- SUBSTITUA A FUNÇÃO INTEIRA POR ESTA ---
+
   List<String> gerarHorarios() {
     List<String> horarios = [];
-    TimeOfDay start = const TimeOfDay(hour: 8, minute: 0);
-    TimeOfDay end = const TimeOfDay(hour: 17, minute: 30);
+    
+    // 1. Usa os mesmos horários da secretária (vai até 20:00)
+    final TimeOfDay start = const TimeOfDay(hour: 8, minute: 0);
+    final TimeOfDay end = const TimeOfDay(hour: 20, minute: 0); // <-- CORRIGIDO
+    
     TimeOfDay atual = start;
 
-    while (atual.hour < end.hour || (atual.hour == end.hour && atual.minute <= end.minute)) {
-      if (atual.hour < 12 || atual.hour > 13) {
+    // 2. Loop para até ANTES das 20:00 (último slot será 19:30)
+    while (atual.hour < end.hour ||
+        (atual.hour == end.hour && atual.minute < end.minute)) // <-- CORRIGIDO
+    {
+      // 3. Usa a mesma regra de almoço da secretária (só pula 12:00 e 12:30)
+      if (!(atual.hour == 12 && (atual.minute == 0 || atual.minute == 30))) { // <-- CORRIGIDO
         String hora = atual.hour.toString().padLeft(2, '0');
         String minuto = atual.minute.toString().padLeft(2, '0');
         horarios.add('$hora:$minuto');
       }
+
+      // Lógica para adicionar 30 minutos (já estava correta no seu original)
       int novaHora = atual.hour;
       int novoMinuto = atual.minute + 30;
       if (novoMinuto >= 60) {
@@ -280,14 +296,14 @@ class _RemarcarConsultaPageState extends State<RemarcarConsultaPage> {
             onTap: () {
               final difference = consulta.data.difference(DateTime.now());
               
-              if (difference.inDays < 3) {
+              if (difference.inHours < 24) {
                 // --- INÍCIO DA MUDANÇA (USA POP-UP) ---
                 showDialog(
                   context: context,
                   builder: (BuildContext dialogContext) {
                     return AlertDialog(
                       title: const Text('Atenção'),
-                      content: const Text('Não é possível remarcar consultas com menos de 3 dias de antecedência.'),
+                      content: const Text('Não é possível remarcar consultas com menos de 24 horas de antecedência.'),
                       actions: [
                         TextButton(
                           child: const Text('OK'),

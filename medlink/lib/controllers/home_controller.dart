@@ -56,7 +56,18 @@ class HomeController extends ChangeNotifier {
   // Processa a lista de consultas e agrupa por dia
   void _processEvents(DashboardData data) {
     _eventsMap.clear();
-    for (var consulta in data.todasConsultas) {
+
+    // vvvv INÍCIO DA CORREÇÃO vvvv
+    // 1. Filtra a lista ANTES de processar
+    final consultasValidas = data.todasConsultas.where((consulta) {
+      // O seu modelo 'ProximaConsulta' já tem o campo 'status'
+      return consulta.status.toLowerCase() != 'cancelada';
+    });
+    // ^^^^ FIM DA CORREÇÃO ^^^^
+
+
+    // 2. Faz o loop apenas com as consultas válidas
+    for (var consulta in consultasValidas) {
       DateTime diaConsultaUtc = DateTime.utc(
         consulta.data.year,
         consulta.data.month,

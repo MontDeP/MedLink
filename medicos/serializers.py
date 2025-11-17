@@ -62,3 +62,16 @@ class MedicoSerializer(serializers.ModelSerializer):
         if clinica_ids:
             instance.clinicas.set(Clinica.objects.filter(id__in=clinica_ids))
         return instance
+    
+class MedicoListSerializer(serializers.ModelSerializer):
+    """
+    Serializer enxuto para listar médicos no app do paciente.
+    """
+    # Pega o nome completo do 'user' relacionado
+    nome_completo = serializers.CharField(source='user.get_full_name')
+
+    class Meta:
+        model = Medico
+        # Retorna o ID do perfil Medico (que é o mesmo do User) e o nome
+        fields = ['user_id', 'nome_completo'] 
+        # NOTA: 'user_id' é o campo que vamos usar, pois Medico.user é OneToOneField(primary_key=True)

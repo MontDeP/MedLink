@@ -7,18 +7,21 @@ from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 import logging
 from django.db.models import Q, Exists, OuterRef
+from .serializers import MedicoListSerializer # Importe o novo serializer
+from rest_framework import permissions
 
 from agendamentos.models import Consulta, ConsultaStatusLog
 from agendamentos.serializers import ConsultaSerializer
 from agendamentos.consts import STATUS_CONSULTA_REAGENDAMENTO_SOLICITADO # <-- Importação corrigida
+from agendamentos.consts import STATUS_CONSULTA_PENDENTE, STATUS_CONSULTA_CONFIRMADA
 from users.permissions import IsMedicoUser
 from .models import Medico
 from .serializers import MedicoSerializer
+from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
 
-# --- VIEW DA AGENDA (LÓGICA CORRIGIDA) ---
 class MedicoAgendaAPIView(APIView):
     """
     Fornece as consultas de um mês específico para o médico logado,
@@ -43,7 +46,10 @@ class MedicoAgendaAPIView(APIView):
         consultas_do_mes = Consulta.objects.filter(
             medico=medico,
             data_hora__year=year,
-            data_hora__month=month
+            data_hora__month=month,
+            # vvvv FILTRO PARA MOSTRAR APENAS ATIVAS vvvv
+            status_atual__in=[STATUS_CONSULTA_PENDENTE, STATUS_CONSULTA_CONFIRMADA]
+            # ^^^^ ISSO EXCLUI CANCELADAS E REAGENDADAS ^^^^
         ).select_related('paciente__user').order_by('data_hora')
 
         # Agrupa as consultas por dia
@@ -61,9 +67,6 @@ class MedicoAgendaAPIView(APIView):
             })
             
         return Response(agenda_formatada, status=status.HTTP_200_OK)
-
-
-# --- O RESTO DO FICHEIRO CONTINUA IGUAL ---
 
 class SolicitarReagendamentoAPIView(UpdateAPIView):
     """
@@ -149,3 +152,76 @@ class MedicoListView(ListAPIView):
             return Medico.objects.select_related('user').all().order_by('user__first_name', 'user__last_name')
 
         return Medico.objects.none()
+    
+
+class MedicoFilterView(APIView):
+    """
+    View para buscar médicos com base nos filtros (query params)
+    de clinica_id e especialidade.
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        # 1. Obter os query params
+        clinica_id = request.query_params.get('clinica_id')
+        especialidade = request.query_params.get('especialidade')
+
+        # 2. Validação inicial
+        if not clinica_id or not especialidade:
+            return Response({"error": "clinica_id e especialidade são obrigatórios."}, status=400)
+
+        try:
+            # 3. Filtrar o queryset
+            medicos = Medico.objects.filter(
+                clinicas__id=clinica_id,     # Filtra pela clínica (M2M)
+                especialidade=especialidade  # Filtra pela especialidade
+            ).select_related('user') # Otimiza pegando o 'user' junto
+
+            # 4. Serializar os dados
+            serializer = MedicoListSerializer(medicos, many=True)
+            return Response(serializer.data)
+
+        except ValueError:
+            return Response({"error": "ID de clínica inválido."}, status=400)
+        except Exception as e:
+            return Response({"error": str(e)}, status=500)
+
+# medicos/views.py
+
+# ... (outras views, como MedicoFilterView) ...
+
+class MedicoHorariosOcupadosView(APIView):
+    """
+    Endpoint para o paciente ver os horários *ocupados* de um médico
+    para um dia específico, para desabilitar slots no front-end.
+    """
+    permission_classes = [permissions.IsAuthenticated] # Qualquer um logado pode ver
+
+    def get(self, request, medico_id):
+        # 1. Pega o parâmetro 'data' da URL (ex: ?data=2025-11-20)
+        data_str = request.query_params.get('data')
+        if not data_str:
+            return Response(
+                {"error": "O parâmetro 'data' (YYYY-MM-DD) é obrigatório."}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+            data_selecionada = datetime.fromisoformat(data_str).date()
+        except ValueError:
+             return Response(
+                {"error": "Formato de data inválido. Use YYYY-MM-DD."}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # 2. Busca consultas que estão ativas (Pendentes ou Confirmadas)
+        consultas = Consulta.objects.filter(
+            medico_id=medico_id,
+            data_hora__date=data_selecionada,
+            status_atual__in=[STATUS_CONSULTA_PENDENTE, STATUS_CONSULTA_CONFIRMADA]
+        )
+        
+        # 3. Retorna uma lista simples de horários (ISO strings)
+        horarios_ocupados = [consulta.data_hora for consulta in consultas]
+        
+        return Response([h.isoformat() for h in horarios_ocupados], status=status.HTTP_200_OK)

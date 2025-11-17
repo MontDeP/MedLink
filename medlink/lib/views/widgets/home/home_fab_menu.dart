@@ -37,18 +37,27 @@ class _HomeFabMenuState extends State<HomeFabMenu> {
         children: [
           if (_isFabMenuOpen) ...[
             _buildMiniFab(
+              icon: Icons.calendar_month,
+              label: 'Nova Consulta',
+              onPressed: () => _navigateTo(context, '/nova-consulta'),
+            ),
+            const SizedBox(height: 12), // Espaçamento padrão
+
+            // 2. Ação Secundária: Remarcar
+            _buildMiniFab(
               icon: Icons.edit_calendar,
               label: 'Remarcar',
               onPressed: () => _navigateTo(context, '/remarcar-consulta'),
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 12), // Espaçamento padrão
+
+            // 3. Ação Destrutiva: Cancelar
             _buildMiniFab(
-              // (Corrigindo também o ícone que estava errado antes)
-              icon: Icons.calendar_month, // Ícone que existe
-              label: 'Nova Consulta',
-              onPressed: () => _navigateTo(context, '/nova-consulta'),
+              icon: Icons.event_busy,
+              label: 'Cancelar',
+              onPressed: () => _navigateTo(context, '/cancelar-consulta'),
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 12), // Espaçamento padrão
           ],
           FloatingActionButton(
             onPressed: _toggleFabMenu,

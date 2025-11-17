@@ -20,3 +20,11 @@ class ClinicaSerializer(serializers.ModelSerializer):
     class Meta:
         model = Clinica
         fields = '__all__'
+
+class ClinicaListSerializer(serializers.ModelSerializer):
+    """
+    Serializer enxuto para listar clínicas no app do paciente.
+    """
+    class Meta:
+        model = Clinica
+        fields = ['id', 'nome_fantasia']
