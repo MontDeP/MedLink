@@ -130,85 +130,94 @@ class _SecretaryDashboardState extends State<SecretaryDashboard> {
   }
 
   Future<void> _loadInitialData() async {
-    setState(() => _isLoading = true);
-    try {
-      final accessToken = await _storage.read(key: 'access_token');
-      if (accessToken == null) {
-        throw Exception('Token não encontrado. Faça o login novamente.');
-      }
+  setState(() => _isLoading = true);
 
-      Map<String, dynamic> decodedToken = JwtDecoder.decode(accessToken);
+  try {
+    final accessToken = await _storage.read(key: 'access_token');
+    if (accessToken == null) {
+      throw Exception('Token não encontrado. Faça o login novamente.');
+    }
 
-      // Debug: imprima o token decodificado para verificar os campos
-      print("Token decodificado: $decodedToken");
+    Map<String, dynamic> decodedToken = JwtDecoder.decode(accessToken);
 
-      // Tenta obter o nome da clínica de várias maneiras possíveis
-      String? clinicName =
-          decodedToken['clinic_name'] ??
-          decodedToken['clinica_nome'] ??
-          decodedToken['nome_clinica'];
+    // Debug: imprima o token decodificado para verificar os campos
+    print("Token decodificado: $decodedToken");
 
-      // Busca os dados da API em paralelo (sem bloquear a busca do nome da clínica)
-      final resultsFuture = Future.wait([
-        _apiService.getDashboardStats(accessToken),
-        _apiService.getAppointments(accessToken),
-        _apiService.getPatients(accessToken),
-        _apiService.getDoctors(accessToken),
-      ]);
+    // Tenta obter o nome da clínica de várias maneiras possíveis
+    String? clinicName =
+        decodedToken['clinic_name'] ??
+        decodedToken['clinica_nome'] ??
+        decodedToken['nome_clinica'];
 
-      // Se tivermos clinic_id, tenta buscar o nome real da clínica pela API
-      String? clinicNameFromApi;
-      if (_userClinicId != null) {
-        try {
-          clinicNameFromApi = await _apiService.getClinicName(
-            _userClinicId!,
-            accessToken,
-          );
-        } catch (_) {
-          clinicNameFromApi = null;
-        }
-      }
+    // Busca os dados da API em paralelo
+    final resultsFuture = Future.wait([
+      _apiService.getDashboardStats(accessToken),
+      _apiService.getAppointments(accessToken),
+      _apiService.getPatients(accessToken),
+      _apiService.getDoctors(accessToken),
+    ]);
 
-      final results = await resultsFuture;
-
-      if (!mounted) return;
-
-      // Debug: imprima os médicos carregados
-      final doctors = results[3] as List<Doctor>;
-      print('=== MÉDICOS CARREGADOS ===');
-      print('Total: ${doctors.length}');
-      for (var doc in doctors) {
-        print('- ${doc.fullName} (ID: ${doc.id})');
-      }
-      print('========================');
-
-      setState(() {
-        _secretaryName = decodedToken['full_name'] ?? 'Secretária';
-        _userClinicId = decodedToken['clinica_id'] != null
-            ? int.tryParse(decodedToken['clinica_id'].toString())
-            : null;
-        _stats = results[0] as DashboardStats;
-        _allAppointments = results[1] as List<Appointment>;
-        _filteredAppointments = _allAppointments;
-        _patients = results[2] as List<Patient>;
-        _doctors = doctors;
-        _clinicName = clinicName ?? 'Clínica não associada';
-      });
-    } catch (e) {
-      print('ERRO ao carregar dados: $e');
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Erro ao carregar dados: $e'),
-          backgroundColor: Colors.red,
-        ),
-      );
-    } finally {
-      if (mounted) {
-        setState(() => _isLoading = false);
+    // Se tivermos clinic_id, tenta buscar o nome real da clínica pela API
+    String? clinicNameFromApi;
+    if (_userClinicId != null) {
+      try {
+        clinicNameFromApi = await _apiService.getClinicName(
+          _userClinicId!,
+          accessToken,
+        );
+      } catch (_) {
+        clinicNameFromApi = null;
       }
     }
+
+    final results = await resultsFuture;
+
+    if (!mounted) return;
+
+    // Debug: imprime os médicos carregados
+    final doctors = results[3] as List<Doctor>;
+    print('=== MÉDICOS CARREGADOS ===');
+    print('Total: ${doctors.length}');
+    for (var doc in doctors) {
+      print('- ${doc.fullName} (ID: ${doc.id})');
+    }
+    print('========================');
+
+    // 1. Pega a lista "crua" da API
+    final allFetchedAppointments = results[1] as List<Appointment>;
+
+    // 2. Correção: usar a lista completa sem filtro
+    final allAppointmentsForDisplay = allFetchedAppointments;
+
+    setState(() {
+      _secretaryName = decodedToken['full_name'] ?? 'Secretária';
+      _userClinicId = decodedToken['clinica_id'] != null
+          ? int.tryParse(decodedToken['clinica_id'].toString())
+          : null;
+      _stats = results[0] as DashboardStats;
+      _allAppointments = allAppointmentsForDisplay;
+      _filteredAppointments = allAppointmentsForDisplay;
+      _patients = results[2] as List<Patient>;
+      _doctors = doctors;
+      _clinicName = clinicName ?? 'Clínica não associada';
+    });
+  } catch (e) {
+    print('ERRO ao carregar dados: $e');
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Erro ao carregar dados: $e'),
+        backgroundColor: Colors.red,
+      ),
+    );
+  } finally {
+    if (mounted) {
+      setState(() => _isLoading = false);
+    }
   }
+}
+
 
   void _filterAppointments() {
     if (_searchTerm.isEmpty) {
@@ -1849,25 +1858,73 @@ class _SecretaryDashboardState extends State<SecretaryDashboard> {
           title: const Text('Selecione um horário'),
           content: SizedBox(
             width: 360,
-            child: SingleChildScrollView(
-              child: Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: slots.map((dt) {
-                  final label = DateFormat('HH:mm').format(dt);
-                  final hasConflict = _hasLocalSlotConflictDt(
-                    dt,
-                    pacienteId: pacienteId,
-                    medicoId: medicoId,
-                    pacienteNome: pacienteNome,
-                    medicoNome: medicoNome,
+            child: FutureBuilder<List<String>>(
+              // 1. CHAMA A API para buscar os horários ocupados do MÉDICO
+              future: _apiService.getHorariosOcupados(medicoId, date),
+
+              builder: (context, snapshot) {
+                // 2. MOSTRA O LOADING
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const Center(
+                    child: Padding(
+                      padding: EdgeInsets.all(32.0),
+                      child: CircularProgressIndicator(),
+                    ),
                   );
-                  return SizedBox(
-                    width: 96,
-                    child: OutlinedButton(
-                      onPressed: hasConflict
-                          ? null
-                          : () {
+                }
+
+                // 3. MOSTRA O ERRO
+                if (snapshot.hasError) {
+                  return Center(
+                    child: Text('Erro ao carregar horários: ${snapshot.error}'),
+                  );
+                }
+
+                // 4. SUCESSO: Processa os dados da API
+                final horariosIso = snapshot.data ?? [];
+                
+                // Processa os horários da API (incluindo a "janela" de 30min)
+                final Set<String> horariosOcupadosApi = {};
+                for (final isoString in horariosIso) {
+                  try {
+                    final dataHoraOcupada = DateTime.parse(isoString).toLocal();
+                    
+                    // Adiciona o slot exato
+                    horariosOcupadosApi
+                        .add(DateFormat('HH:mm').format(dataHoraOcupada));
+                    
+                  } catch (e) {
+                    print("Erro ao parsear data: $isoString");
+                  }
+                }
+                
+                // 5. RENDERIZA A GRADE
+                return SingleChildScrollView(
+                  child: Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: slots.map((dt) {
+                      final label = DateFormat('HH:mm').format(dt);
+
+                      // --- LÓGICA DE CONFLITO COMBINADA ---
+                      // 1. O médico está ocupado (via API)?
+                      final bool medicoOcupado =
+                          horariosOcupadosApi.contains(label);
+                      
+                      // 2. O paciente está ocupado (via lista local _allAppointments)?
+                      final bool pacienteOcupado =
+                          _checkLocalPatientConflict(dt, pacienteId);
+                      
+                      final bool hasConflict = medicoOcupado || pacienteOcupado;
+                      // --- FIM DA LÓGICA ---
+
+                      return SizedBox(
+                        width: 96,
+                        child: OutlinedButton(
+                          onPressed: () {
+                            if (hasConflict) {
+                              _showHorarioOcupadoDialog();
+                            } else {
                               Navigator.pop(
                                 ctx,
                                 TimeOfDay(hour: dt.hour, minute: dt.minute),

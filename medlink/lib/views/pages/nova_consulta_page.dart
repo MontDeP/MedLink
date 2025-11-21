@@ -492,4 +492,259 @@ class _NovaConsultaPageState extends State<NovaConsultaPage> {
       ),
     );
   }
+
+  // --- MÉTODOS HELPERS DE UI ---
+  Widget _buildDropdownHeader(String title) {
+    return Column(
+      children: [
+        Align(
+          alignment: Alignment.centerLeft,
+          child: Text(
+            title,
+            style: const TextStyle(fontSize: 14, color: Colors.grey),
+          ),
+        ),
+        const SizedBox(height: 5),
+      ],
+    );
+  }
+
+  InputDecoration _buildDropdownDecoration({bool isLoading = false}) {
+    return InputDecoration(
+      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+      ),
+      filled: true,
+      fillColor: Colors.grey.shade100,
+      suffixIcon: isLoading
+          ? const Padding(
+              padding: EdgeInsets.all(12.0),
+              child: SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+            )
+          : null,
+    );
+  }
+
+  BoxDecoration _buildInputDecoration({bool isEnabled = true}) {
+    return BoxDecoration(
+      color: isEnabled ? Colors.grey.shade100 : Colors.grey.shade300,
+      borderRadius: BorderRadius.circular(12),
+      border: Border.all(color: Colors.grey.shade300),
+    );
+  }
+
+  TextStyle _buildTextStyle({bool isSelected = true}) {
+    return TextStyle(
+      color: isSelected ? Colors.black : Colors.grey.shade700,
+    );
+  }
+
+  // --- MÉTODOS DE SELEÇÃO DE DATA/HORA ---
+  Future<void> _selecionarData() async {
+    // (O código do showDatePicker continua o mesmo)
+    DateTime? picked = await showDatePicker(
+      context: context,
+      initialDate: _selectedDate ?? DateTime.now(),
+      firstDate: DateTime.now(),
+      lastDate: DateTime(2030),
+    );
+
+    if (picked != null) {
+      setState(() {
+        _selectedDate = picked;
+        _selectedHorario = null; // Reseta o horário
+        _isLoadingHorarios = true; // Ativa o loading dos slots
+        _horariosOcupados.clear(); // Limpa os horários antigos
+      });
+
+      // vvvv INÍCIO DA NOVA LÓGICA vvvv
+      try {
+        // Busca os horários exatos da API (ex: ["2025-11-20T10:30:00Z"])
+        final horariosIso = await _apiService.getHorariosOcupados(
+          _selectedMedico!.id,
+          _selectedDate!,
+        );
+
+        // Converte as ISO strings em horários "HH:mm"
+        // e aplica a regra de conflito de 30 minutos
+        final Set<String> horariosConflitantes = {};
+
+        for (final isoString in horariosIso) {
+          // Converte para a hora local do dispositivo
+          final dataHoraOcupada = DateTime.parse(isoString).toLocal();
+
+          // Adiciona o slot exato
+          horariosConflitantes.add(DateFormat('HH:mm').format(dataHoraOcupada));
+
+      
+        }
+
+        if (!mounted) return;
+        setState(() {
+          _horariosOcupados = horariosConflitantes;
+          _isLoadingHorarios = false;
+        });
+      } catch (e) {
+        if (!mounted) return;
+        setState(() {
+          _isLoadingHorarios = false;
+        });
+        _showError("Erro ao buscar horários: $e");
+      }
+      // ^^^^ FIM DA NOVA LÓGICA ^^^^
+    }
+  }
+
+  
+  List<String> _gerarHorariosMock() {
+    List<String> horarios = [];
+    
+    // 1. Usa os mesmos horários da secretária (vai até 20:00)
+    final TimeOfDay start = const TimeOfDay(hour: 8, minute: 0);
+    final TimeOfDay end = const TimeOfDay(hour: 20, minute: 0); // <-- CORRIGIDO
+    
+    TimeOfDay atual = start;
+
+    // 2. Loop para até ANTES das 20:00 (último slot será 19:30)
+    while (atual.hour < end.hour ||
+        (atual.hour == end.hour && atual.minute < end.minute)) // <-- CORRIGIDO
+    {
+      // 3. Usa a mesma regra de almoço da secretária (só pula 12:00 e 12:30)
+      if (!(atual.hour == 12 && (atual.minute == 0 || atual.minute == 30))) { // <-- CORRIGIDO
+        String hora = atual.hour.toString().padLeft(2, '0');
+        String minuto = atual.minute.toString().padLeft(2, '0');
+        horarios.add('$hora:$minuto');
+      }
+
+      // Lógica para adicionar 30 minutos (já estava correta no seu original)
+      int novaHora = atual.hour;
+      int novoMinuto = atual.minute + 30;
+      if (novoMinuto >= 60) {
+        novaHora++;
+        novoMinuto -= 60;
+      }
+      atual = TimeOfDay(hour: novaHora, minute: novoMinuto);
+    }
+    return horarios;
+  }
+
+  void _selecionarHorario() {
+    // Se estiver carregando os horários, não abre o modal
+    if (_isLoadingHorarios) {
+      _showError("Carregando horários, aguarde...");
+      return;
+    }
+
+    final List<String> horariosDisponiveis = _gerarHorariosMock();
+
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return Dialog(
+          backgroundColor: Colors.white,
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text(
+                  'Selecione um horário',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 15),
+                SizedBox(
+                  width: double.maxFinite,
+                  child: GridView.builder(
+                    shrinkWrap: true,
+                    gridDelegate:
+                        const SliverGridDelegateWithFixedCrossAxisCount(
+                      crossAxisCount: 3,
+                      childAspectRatio: 2.5,
+                      crossAxisSpacing: 8,
+                      mainAxisSpacing: 8,
+                    ),
+                    itemCount: horariosDisponiveis.length,
+                    itemBuilder: (context, index) {
+                      final horario = horariosDisponiveis[index];
+                      final bool selecionado = _selectedHorario == horario;
+
+                      // vvvv LÓGICA DE DESABILITAR vvvv
+                      final bool isOcupado =
+                          _horariosOcupados.contains(horario);
+                      // ^^^^ FIM DA LÓGICA ^^^^
+
+                      return GestureDetector(
+                        // vvvv DESABILITA O CLIQUE vvvv
+                        onTap: () {
+                          if (isOcupado) {
+                            // Se estiver ocupado, mostra o pop-up
+                            _showHorarioOcupadoDialog();
+                          } else {
+                            // Se estiver livre, seleciona o horário
+                            setState(() {
+                              _selectedHorario = horario;
+                            });
+                            Navigator.pop(context);
+                          }
+                        },
+                        // ^^^^ FIM DA CORREÇÃO ^^^^
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(vertical: 10),
+                          decoration: BoxDecoration(
+                            // vvvv LÓGICA DE COR vvvv
+                            color: selecionado
+                                ? const Color(0xFF317714) // Selecionado
+                                : isOcupado
+                                    ? Colors.grey.shade300 // Ocupado
+                                    : Colors.grey.shade100, // Livre
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(
+                              color: selecionado
+                                  ? const Color(0xFF317714)
+                                  : Colors.grey.shade300,
+                            ),
+                          ),
+                          alignment: Alignment.center,
+                          child: Text(
+                            horario,
+                            style: TextStyle(
+                              // vvvv LÓGICA DE TEXTO vvvv
+                              color: selecionado
+                                  ? Colors.white
+                                  : isOcupado
+                                      ? Colors.grey.shade600 // Ocupado
+                                      : Colors.black87, // Livre
+                              fontWeight: selecionado
+                                  ? FontWeight.bold
+                                  : FontWeight.normal,
+                              // Adiciona um "riscado" se estiver ocupado
+                              decoration: isOcupado
+                                  ? TextDecoration.lineThrough
+                                  : TextDecoration.none,
+                            ),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+                const SizedBox(height: 15),
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('Fechar'),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
 }

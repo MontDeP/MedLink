@@ -79,7 +79,7 @@ class ConsultaAPIView(APIView):
             # Conflito por médico (qualquer consulta no intervalo)
             conflito_medico = Consulta.objects.filter(
                 medico=medico,
-                data_hora__gte=janela_inicio,
+                data_hora__gt=janela_inicio,
                 data_hora__lt=janela_fim,
             ).exists()
             if conflito_medico:
@@ -91,7 +91,7 @@ class ConsultaAPIView(APIView):
             # Conflito por paciente (qualquer consulta no intervalo)
             conflito_paciente = Consulta.objects.filter(
                 paciente=paciente,
-                data_hora__gte=janela_inicio,
+                data_hora__gt=janela_inicio,
                 data_hora__lt=janela_fim,
             ).exists()
             if conflito_paciente:
