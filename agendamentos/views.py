@@ -440,26 +440,65 @@ class PacienteRemarcarConsultaView(APIView):
 
             try:
                 data_hora_nova = datetime.fromisoformat(data_hora_nova_str)
-                if timezone.is_naive(data_hora_nova):
-                    data_hora_nova = timezone.make_aware(data_hora_nova)
+                
+                # CORREÇÃO: Normaliza a data de entrada antes da validação
+                if timezone.is_aware(data_hora_nova):
+                    data_hora_nova = timezone.make_naive(data_hora_nova)
+
             except ValueError:
                 return Response(
                     {"error": "Formato de data/hora inválido. Use o padrão ISO 8601 (YYYY-MM-DDTHH:MM:SS)."},
                     status=status.HTTP_400_BAD_REQUEST
                 )
-
-            # 4. Validação: só pode remarcar com pelo menos 3 dias de antecedência
-            data_consulta_aware = consulta.data_hora
-            if timezone.is_naive(data_consulta_aware):
-                data_consulta_aware = timezone.make_aware(data_consulta_aware)
-
-            if (data_consulta_aware - timezone.now()).days < 3:
-                return Response(
-                    {"error": "Não é possível remarcar com menos de 3 dias de antecedência."},
+                
+            # --- VALIDAÇÃO DE DATA (Backend) ---
+            
+            # 4. Checagem de Dia de Funcionamento (Não permite Sábados=5 ou Domingos=6)
+            if data_hora_nova.weekday() >= 5: 
+                 return Response(
+                    {"error": "Não é possível agendar consultas em Sábados ou Domingos."},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # 5. Checagem de Data Passada (API não permite)
+            if data_hora_nova < timezone.now():
+                 return Response(
+                    {"error": "Não é possível remarcar para uma data no passado."},
                     status=status.HTTP_400_BAD_REQUEST
                 )
 
-            # 5. Atualiza e salva
+            # 6. Validação: Apenas pode remarcar com pelo menos 3 dias de antecedência
+            # Nota: É mais seguro checar a diferença entre a data AGORA e a data NOVA, 
+            # pois a data antiga já passou pelo filtro.
+            if (data_hora_nova - timezone.now()).days < 3: 
+                return Response(
+                    {"error": "Não é possível remarcar para menos de 3 dias de antecedência a partir de hoje."},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            # 7. CONFLITO DISCRETO (Checagem de slot vazio) ---
+            conflito_medico = Consulta.objects.filter(
+                medico=consulta.medico,
+                data_hora=data_hora_nova
+            ).exclude(pk=pk).exists()
+            if conflito_medico:
+                return Response(
+                    {"error": "O médico já possui agendamento neste horário."},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            conflito_paciente = Consulta.objects.filter(
+                paciente=consulta.paciente,
+                data_hora=data_hora_nova
+            ).exclude(pk=pk).exists()
+            if conflito_paciente:
+                return Response(
+                    {"error": "Você já possui agendamento neste horário."},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            # --- FIM DA VALIDAÇÃO E CONFLITO ---
+
+            # 8. Atualiza e salva
             consulta.data_hora = data_hora_nova
             if 'REAGENDADA' in [choice[0] for choice in STATUS_CONSULTA_CHOICES]:
                 consulta.status_atual = 'REAGENDADA'
@@ -468,7 +507,7 @@ class PacienteRemarcarConsultaView(APIView):
 
             consulta.save()
 
-            # 6. Log
+            # 9. Log
             ConsultaStatusLog.objects.create(
                 consulta=consulta,
                 status_novo=consulta.status_atual,
@@ -478,11 +517,11 @@ class PacienteRemarcarConsultaView(APIView):
             return Response({"message": "Consulta remarcada com sucesso!"}, status=status.HTTP_200_OK)
 
         except Exception as e:
+            # CORREÇÃO: Capturar e retornar o erro real para debug do front-end
             return Response(
                 {"error": f"Erro interno ao salvar a remarcação: {str(e)}"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
-
 
 class ClinicaListView(APIView):
     """Retorna todas as clínicas ativas para seleção de agendamento."""
