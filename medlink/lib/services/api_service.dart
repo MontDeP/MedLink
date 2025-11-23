@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart'; // Importado para usar debugPrint
 import 'package:http/http.dart' as http;
 import 'package:medlink/views/pages/admin.dart'; // AdminUser
+import 'package:intl/intl.dart'; // <<<<< IMPORT ADICIONADO AQUI
 import '../models/user_model.dart';
 import '../models/appointment_model.dart';
 import '../models/dashboard_stats_model.dart';
@@ -295,20 +296,29 @@ class ApiService {
   }
 
   Future<List<ProximaConsulta>> getPacienteConsultasPendentes() async {
-    // 1. Chama o endpoint do dashboard que JÁ FUNCIONA
-    final dashboardData = await fetchDashboardData();
-
-    // 2. Filtra a lista 'todasConsultas'
-    return dashboardData.todasConsultas.where((c) {
-      bool isPendenteOuConfirmada =
-          (c.status.toLowerCase() == 'pendente' ||
-          c.status.toLowerCase() == 'confirmada');
-      // Usamos c.data (do ProximaConsulta) ao invés de c.horario
-      bool isFutura = c.data.isAfter(DateTime.now());
-      return isPendenteOuConfirmada && isFutura;
-    }).toList();
+    // 👇 NOVO ENDPOINT FILTRADO 👇
+    final url = Uri.parse('$baseUrl/api/agendamentos/paciente/consultas/');
+    if (_accessToken == null) throw Exception('Token não encontrado.');
+    
+    // CORREÇÃO: Usa http.get
+    final response = await http.get( // <-- Correção
+        url,
+        headers: {
+            "Content-Type": "application/json",
+            "Authorization": "Bearer $_accessToken",
+        },
+    );
+    
+    if (response.statusCode == 200) {
+      final List jsonList = json.decode(utf8.decode(response.bodyBytes));
+      
+      // Mapeia a lista de JSONs para o modelo ProximaConsulta
+      // A DashboardConsultaSerializer deve retornar dados compatíveis com este modelo.
+      return jsonList.map((json) => ProximaConsulta.fromJson(json)).toList();
+    } else {
+      throw Exception('Falha ao carregar consultas futuras do paciente.');
+    }
   }
-
   /// Permite ao paciente remarcar uma consulta existente.
   /// (Este método estava correto e é mantido)
   Future<bool> remarcarConsultaPaciente(
@@ -334,12 +344,130 @@ class ApiService {
     return response.statusCode == 200;
   }
 
+  Future<bool> cancelarConsultaPaciente(
+    int consultaId,
+    String motivo,
+  ) async {
+    final url = Uri.parse(
+      "$baseUrl/api/agendamentos/$consultaId/paciente-cancelar/",
+    );
+    if (_accessToken == null) throw Exception('Token não encontrado.');
+
+    final response = await http.patch(
+      url,
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": "Bearer $_accessToken",
+      },
+      body: jsonEncode({'motivo': motivo}), // Envia o motivo
+    );
+
+    // Sucesso se for 200 OK
+    if (response.statusCode == 200) return true;
+
+    // Se não for 200, lança exceção com a mensagem de erro do backend (ex: <24h)
+    final errorBody = jsonDecode(utf8.decode(response.bodyBytes));
+    final errorMessage = errorBody['error'] ?? 'Falha ao cancelar consulta.';
+    throw Exception(errorMessage);
+  }
+
+  // --- NOVOS MÉTODOS PARA AGENDAMENTO DO PACIENTE ---
+
+  /// Busca todas as clínicas disponíveis (GET /api/agendamentos/clinicas/)
+  Future<List<Map<String, dynamic>>> getClinicas() async {
+    final url = Uri.parse("$baseUrl/api/agendamentos/clinicas/");
+    if (_accessToken == null) throw Exception('Token não encontrado.');
+
+    final response = await http.get(
+      url,
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": "Bearer $_accessToken",
+      },
+    );
+
+    if (response.statusCode == 200) {
+      final List<dynamic> body = jsonDecode(utf8.decode(response.bodyBytes));
+      return body.cast<Map<String, dynamic>>();
+    } else {
+      throw Exception('Falha ao carregar clínicas: ${response.statusCode}');
+    }
+  }
+
+  /// Busca especialidades por clínica (GET /api/agendamentos/clinicas/{pk}/especialidades/)
+  Future<List<Map<String, dynamic>>> getEspecialidadesPorClinica(int clinicaId) async {
+    final url = Uri.parse("$baseUrl/api/agendamentos/clinicas/$clinicaId/especialidades/");
+    if (_accessToken == null) throw Exception('Token não encontrado.');
+
+    final response = await http.get(
+      url,
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": "Bearer $_accessToken",
+      },
+    );
+
+    if (response.statusCode == 200) {
+      final List<dynamic> body = jsonDecode(utf8.decode(response.bodyBytes));
+      return body.cast<Map<String, dynamic>>();
+    } else {
+      throw Exception('Falha ao carregar especialidades: ${response.statusCode}');
+    }
+  }
+
+  /// Busca médicos por clínica e especialidade (GET /api/agendamentos/clinicas/{pk}/especialidades/{key}/medicos/)
+  Future<List<Map<String, dynamic>>> getMedicosPorEspecialidade(
+      int clinicaId, String especialidadeKey) async {
+    final url = Uri.parse("$baseUrl/api/agendamentos/clinicas/$clinicaId/especialidades/$especialidadeKey/medicos/");
+    if (_accessToken == null) throw Exception('Token não encontrado.');
+
+    final response = await http.get(
+      url,
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": "Bearer $_accessToken",
+      },
+    );
+
+    if (response.statusCode == 200) {
+      final List<dynamic> body = jsonDecode(utf8.decode(response.bodyBytes));
+      return body.cast<Map<String, dynamic>>();
+    } else {
+      throw Exception('Falha ao carregar médicos: ${response.statusCode}');
+    }
+  }
+  
+  /// Busca horários disponíveis de um médico
+  /// (GET /api/agendamentos/medicos/{pk}/horarios-disponiveis/?data=YYYY-MM-DD)
+  Future<List<String>> getHorariosDisponiveis(int medicoId, DateTime data) async {
+    final formattedDate = DateFormat('yyyy-MM-dd').format(data);
+    final url = Uri.parse("$baseUrl/api/agendamentos/medicos/$medicoId/horarios-disponiveis/?data=$formattedDate");
+    if (_accessToken == null) return [];
+
+    final response = await http.get(
+      url,
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": "Bearer $_accessToken",
+      },
+    );
+
+    if (response.statusCode == 200) {
+      final List<dynamic> body = jsonDecode(utf8.decode(response.bodyBytes));
+      return body.cast<String>(); // Retorna a lista de strings "HH:MM"
+    } else {
+      debugPrint('Falha ao carregar horários: ${response.body}');
+      throw Exception('Falha ao carregar horários disponíveis.');
+    }
+  }
+  
+
+  /// Paciente marca consulta (POST /api/agendamentos/paciente-marcar/)
   Future<bool> pacienteMarcarConsulta(
-    String especialidade,
-    String medico,
+    int clinicaId, // <<< NOVO PARAMETER
+    int medicoId, // <<< NOVO PARAMETER
     DateTime dataHora,
   ) async {
-    // Endpoint de exemplo: /api/agendamentos/paciente-marcar/
     final url = Uri.parse("$baseUrl/api/agendamentos/paciente-marcar/");
     if (_accessToken == null) throw Exception('Token não encontrado.');
 
@@ -350,17 +478,21 @@ class ApiService {
         "Authorization": "Bearer $_accessToken",
       },
       body: jsonEncode({
-        'especialidade_nome':
-            especialidade, // O backend precisará buscar pelo nome
-        'medico_nome': medico, // O backend precisará buscar pelo nome
+        'clinica_id': clinicaId, // <<< NOVO
+        'medico_id': medicoId, // <<< NOVO
         'data_hora': dataHora.toIso8601String(),
       }),
     );
 
-    // 201 Created é o código de sucesso para um POST (criação)
-    return response.statusCode == 201;
+    if (response.statusCode == 201) return true;
+    
+    // Se não for 201, lança exceção com a mensagem de erro do backend (ex: conflito)
+    final errorBody = jsonDecode(utf8.decode(response.bodyBytes));
+    final errorMessage = errorBody['error'] ?? 'Erro desconhecido.';
+    throw Exception(errorMessage);
   }
 
+// ...existing code...
   // Busca lista de pacientes (usado pela secretária e admin)
   Future<List<Patient>> getPatients(String accessToken) async {
     final url = Uri.parse("$baseUrl/api/pacientes/");

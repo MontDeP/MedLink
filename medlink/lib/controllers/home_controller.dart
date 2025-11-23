@@ -1,6 +1,5 @@
 // lib/controllers/home_controller.dart (NOVO ARQUIVO)
 import 'package:flutter/material.dart';
-import 'package:table_calendar/table_calendar.dart';
 import 'package:medlink/services/api_service.dart';
 import 'package:medlink/models/dashboard_data_model.dart';
 
@@ -56,7 +55,15 @@ class HomeController extends ChangeNotifier {
   // Processa a lista de consultas e agrupa por dia
   void _processEvents(DashboardData data) {
     _eventsMap.clear();
-    for (var consulta in data.todasConsultas) {
+    
+    // FILTRAR CANCELADAS antes de construir o mapa
+    final filteredConsultas = data.todasConsultas.where((consulta) {
+      // A consulta é incluída se o status NÃO for 'CANCELADA' (case-insensitive)
+      return consulta.status.toUpperCase() != 'CANCELADA';
+    }).toList();
+    
+    // AGORA USA A LISTA FILTRADA NO LOOP, removendo o aviso de variável não utilizada
+    for (var consulta in filteredConsultas) {
       DateTime diaConsultaUtc = DateTime.utc(
         consulta.data.year,
         consulta.data.month,
@@ -69,7 +76,6 @@ class HomeController extends ChangeNotifier {
       _eventsMap[diaConsultaUtc]!.add(consulta);
     }
   }
-
   // --- Ações do Calendário ---
 
   void onDaySelected(DateTime selectedDay, DateTime focusedDay, BuildContext context) {

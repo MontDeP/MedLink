@@ -1,4 +1,4 @@
-// lib/views/pages/remarcar_consulta_page.dart (COM POP-UP DE AVISO)
+// lib/views/pages/remarcar_consulta_page.dart
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:medlink/models/dashboard_data_model.dart'; 
@@ -59,20 +59,35 @@ class _RemarcarConsultaPageState extends State<RemarcarConsultaPage> {
   }
 
   Future<void> _selecionarData(BuildContext context) async {
+    // A validação de 3 dias deve ser feita ANTES de abrir o date picker
     final DateTime dataMinima = DateTime.now().add(const Duration(days: 3));
+    
+    // As consultas só podem ser remarcadas se a data AGORA estiver a 3 dias ou mais de distância
+    // Mas o date picker deve permitir datas a partir de hoje + 3 dias.
+    DateTime dataInicial = _consultaSelecionada!.data.isAfter(dataMinima) 
+                   ? _consultaSelecionada!.data 
+                   : dataMinima;
+    if (dataInicial.isBefore(dataMinima)) {
+        dataInicial = dataMinima;
+    }
+
 
     DateTime? picked = await showDatePicker(
       context: context,
-      initialDate: _consultaSelecionada!.data.isAfter(dataMinima) 
-                   ? _consultaSelecionada!.data 
-                   : dataMinima,
-      firstDate: dataMinima.subtract(const Duration(days: 1)),
+      initialDate: dataInicial,
+      firstDate: DateTime.now().add(const Duration(days: 1)),
       lastDate: DateTime(2030),
+      locale: const Locale('pt', 'BR'),
       selectableDayPredicate: (DateTime day) {
-        return day.isAfter(DateTime.now().add(const Duration(days: 2)));
+        // Regras de validação (Dias Úteis e Mínimo 3 dias de antecedência)
+        bool isWeekend = day.weekday == DateTime.saturday || day.weekday == DateTime.sunday;
+        bool isBeforeMinDate = day.isBefore(dataMinima);
+        
+        return !isWeekend && !isBeforeMinDate;
       },
-      helpText: 'Só é possível remarcar para daqui a 3 dias.',
+      helpText: 'Só é possível remarcar para dias úteis, com mínimo de 3 dias de antecedência.',
     );
+    
     if (picked != null) {
       setState(() {
         _selectedDate = picked;
@@ -81,6 +96,8 @@ class _RemarcarConsultaPageState extends State<RemarcarConsultaPage> {
     }
   }
 
+  // A função gerarHorarios() do remarcamento não precisa de lógica de API,
+  // pois ela apenas gera a lista de opções a serem checadas na API.
   List<String> gerarHorarios() {
     List<String> horarios = [];
     TimeOfDay start = const TimeOfDay(hour: 8, minute: 0);
@@ -105,6 +122,8 @@ class _RemarcarConsultaPageState extends State<RemarcarConsultaPage> {
   }
   
   void _abrirSeletorDeHorario(BuildContext context) {
+    // Nota: O Front-end de Remarcação (Flutter) não possui a lógica de API para buscar horários.
+    // Usamos a lista estática e a API do backend faz a checagem de conflito no PATCH.
     final List<String> horariosDisponiveis = gerarHorarios();
     showDialog(
       context: context,
@@ -192,20 +211,48 @@ class _RemarcarConsultaPageState extends State<RemarcarConsultaPage> {
       );
 
       if (success) {
-         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Consulta remarcada com sucesso!'), backgroundColor: Colors.green)
-        );
-        Navigator.pop(context); // Volta para a lista de consultas
+         // 👇 INÍCIO DA MODIFICAÇÃO: Pop-up de Sucesso e Redirecionamento 👇
+         if (mounted) {
+              showDialog(
+                context: context,
+                barrierDismissible: false,
+                builder: (BuildContext dialogContext) {
+                  return AlertDialog(
+                    title: const Text('Consulta Reagendada!'),
+                    content: const Text('Sua consulta foi reagendada com sucesso!'),
+                    actions: <Widget>[
+                      TextButton(
+                        child: const Text('OK'),
+                        onPressed: () {
+                          Navigator.of(dialogContext).pop(); 
+                          // Redireciona para o Dashboard do Paciente e FORÇA RECARREGAMENTO
+                          Navigator.of(context).pushNamedAndRemoveUntil(
+                            '/user/dashboard', 
+                            (Route<dynamic> route) => false
+                          );
+                        },
+                      ),
+                    ],
+                  );
+                },
+              );
+          }
+         // 👆 FIM DA MODIFICAÇÃO 👆
       } else {
         throw Exception('Falha da API ao remarcar.');
       }
 
     } catch(e) {
+      if (!mounted) return;
+      // Captura o erro do backend e exibe a mensagem
       ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Erro ao remarcar: $e'), backgroundColor: Colors.red,)
+        SnackBar(
+          content: Text('Erro ao remarcar: ${e.toString().replaceFirst('Exception: ', '')}'),
+          backgroundColor: Colors.red,
+        )
       );
     } finally {
-      setState(() => _isSaving = false);
+      if(mounted) setState(() => _isSaving = false);
     }
   }
 
@@ -264,7 +311,6 @@ class _RemarcarConsultaPageState extends State<RemarcarConsultaPage> {
     return _buildFormularioRemarcacao();
   }
 
-  // --- ALTERAÇÃO SOLICITADA (POP-UP) APLICADA AQUI ---
   Widget _buildListaConsultas() {
     return ListView.builder(
       padding: const EdgeInsets.all(16),
@@ -281,7 +327,6 @@ class _RemarcarConsultaPageState extends State<RemarcarConsultaPage> {
               final difference = consulta.data.difference(DateTime.now());
               
               if (difference.inDays < 3) {
-                // --- INÍCIO DA MUDANÇA (USA POP-UP) ---
                 showDialog(
                   context: context,
                   builder: (BuildContext dialogContext) {
@@ -292,16 +337,14 @@ class _RemarcarConsultaPageState extends State<RemarcarConsultaPage> {
                         TextButton(
                           child: const Text('OK'),
                           onPressed: () {
-                            Navigator.of(dialogContext).pop(); // Fecha o pop-up
+                            Navigator.of(dialogContext).pop(); 
                           },
                         ),
                       ],
                     );
                   },
                 );
-                // --- FIM DA MUDANÇA ---
               } else {
-                // Se for permitido, avança para o formulário
                 setState(() {
                   _consultaSelecionada = consulta;
                 });
@@ -312,7 +355,6 @@ class _RemarcarConsultaPageState extends State<RemarcarConsultaPage> {
       },
     );
   }
-  // --- FIM DA ALTERAÇÃO ---
 
   Widget _buildFormularioRemarcacao() {
     return Center(

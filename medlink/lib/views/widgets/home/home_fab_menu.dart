@@ -1,4 +1,4 @@
-// lib/views/widgets/home/home_fab_menu.dart (CORRIGIDO O CLIQUE E O ÍCONE)
+// lib/views/widgets/home/home_fab_menu.dart (CORRIGIDO E REORDENADO)
 import 'package:flutter/material.dart';
 
 class HomeFabMenu extends StatefulWidget {
@@ -21,6 +21,7 @@ class _HomeFabMenuState extends State<HomeFabMenu> {
 
   void _navigateTo(BuildContext context, String routeName) {
     _toggleFabMenu(); 
+    // Navega e usa o .then para garantir que o Dashboard recarregue ao voltar
     Navigator.pushNamed(context, routeName).then((_) {
       widget.onNavigate();
     });
@@ -36,15 +37,26 @@ class _HomeFabMenuState extends State<HomeFabMenu> {
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
           if (_isFabMenuOpen) ...[
+            
+            // 1. CANCELAR (TOP)
+            _buildMiniFab(
+              icon: Icons.cancel_outlined, // Novo Ícone de cancelamento
+              label: 'Cancelar Consulta',
+              onPressed: () => _navigateTo(context, '/cancelar-consulta'), // Nova rota
+            ),
+            const SizedBox(height: 12),
+
+            // 2. REMARCAR (MIDDLE)
             _buildMiniFab(
               icon: Icons.edit_calendar,
               label: 'Remarcar',
               onPressed: () => _navigateTo(context, '/remarcar-consulta'),
             ),
             const SizedBox(height: 12),
+            
+            // 3. NOVA CONSULTA (BOTTOM)
             _buildMiniFab(
-              // (Corrigindo também o ícone que estava errado antes)
-              icon: Icons.calendar_month, // Ícone que existe
+              icon: Icons.calendar_month, 
               label: 'Nova Consulta',
               onPressed: () => _navigateTo(context, '/nova-consulta'),
             ),
@@ -52,8 +64,7 @@ class _HomeFabMenuState extends State<HomeFabMenu> {
           ],
           FloatingActionButton(
             onPressed: _toggleFabMenu,
-            // (Corrigindo o 'const' que estava errado antes)
-            backgroundColor: _isFabMenuOpen ? Colors.redAccent : Color(0xFF317714),
+            backgroundColor: _isFabMenuOpen ? Colors.redAccent : const Color(0xFF317714),
             child: Icon(
               _isFabMenuOpen ? Icons.close : Icons.add,
               size: 30,
@@ -64,7 +75,6 @@ class _HomeFabMenuState extends State<HomeFabMenu> {
     );
   }
 
-  // --- CORREÇÃO 1 AQUI ---
   Widget _buildMiniFab({
     required IconData icon,
     required String label,
