@@ -2,8 +2,15 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:medlink/models/dashboard_data_model.dart'; 
-// --- IMPORT ADICIONADO ---
 import 'package:medlink/services/api_service.dart';
+import 'package:intl/date_symbol_data_local.dart'; 
+
+
+// --- ESTRUTURAS DE DADOS SIMPLIFICADAS ---
+class Clinica { final int id; final String nome; Clinica({required this.id, required this.nome}); }
+class Especialidade { final String key; final String nome; Especialidade({required this.key, required this.nome}); }
+class MedicoSelecionavel { final int id; final String nome; final String especialidade; MedicoSelecionavel({required this.id, required this.nome, required this.especialidade}); }
+
 
 class NovaConsultaPage extends StatefulWidget {
   final bool isRescheduling;
@@ -20,152 +27,120 @@ class NovaConsultaPage extends StatefulWidget {
 }
 
 class _NovaConsultaPageState extends State<NovaConsultaPage> {
-  // --- ESTADOS ADICIONADOS ---
   final ApiService _apiService = ApiService();
   bool _isSaving = false;
-  // --- FIM DOS ESTADOS ADICIONADOS ---
+  
+  // --- NOVOS ESTADOS PARA A CASCATA DE SELEÇÃO ---
+  List<Clinica> _clinicas = [];
+  List<Especialidade> _especialidades = [];
+  List<MedicoSelecionavel> _medicos = [];
+  List<String> _horariosDisponiveis = [];
 
-  String? selectedEspecialidade;
-  String? selectedMedico;
-  DateTime? selectedDate;
-  String? selectedHorario;
+  Clinica? _selectedClinica;
+  Especialidade? _selectedEspecialidade;
+  MedicoSelecionavel? _selectedMedico;
+  
+  DateTime? _selectedDate;
+  String? _selectedHorario;
 
-  // Listas (agora dentro do State para podermos modificar)
-  final List<String> especialidades = [
-    'Cardiologista',
-    'Dermatologista',
-    'Neurologista',
-    'Clínico Geral'
-  ];
+  bool _isClinicaLoading = true;
+  bool _isEspecialidadeLoading = false;
+  bool _isMedicoLoading = false;
+  bool _isHorarioLoading = false;
+  
+  String? _errorMessage;
+  // --- FIM DOS NOVOS ESTADOS ---
 
-  final List<String> medicos = [
-    'Dra. Ana Oliveira',
-    'Dr. Bruno Souza',
-    'Dra. Carla Mendes',
-    'Dr. Daniel Lima'
-  ];
 
-  // (O método initState() permanece o mesmo)
   @override
   void initState() {
     super.initState();
-    if (widget.isRescheduling && widget.consultaAntiga != null) {
-      final especialidadeAntiga = widget.consultaAntiga!.especialidade;
-      final medicoAntigo = widget.consultaAntiga!.medico;
-      if (!especialidades.contains(especialidadeAntiga)) {
-        especialidades.insert(0, especialidadeAntiga);
-      }
-      if (!medicos.contains(medicoAntigo)) {
-        medicos.insert(0, medicoAntigo);
-      }
-      selectedEspecialidade = especialidadeAntiga;
-      selectedMedico = medicoAntigo;
+    initializeDateFormatting('pt_BR', null);
+    _loadClinicas();
+  }
+  
+  // --- NOVAS FUNÇÕES DE CARREGAMENTO ---
+  Future<void> _loadClinicas() async {
+    setState(() {
+      _isClinicaLoading = true;
+      _errorMessage = null;
+    });
+    try {
+      final data = await _apiService.getClinicas();
+      _clinicas = data.map((c) => Clinica(id: c['id'] as int, nome: c['nome'] as String)).toList();
+    } catch (e) {
+      _errorMessage = 'Erro ao carregar clínicas: $e';
+    } finally {
+      setState(() => _isClinicaLoading = false);
     }
   }
 
-  // (Os métodos gerarHorarios() e _abrirSeletorDeHorario() permanecem os mesmos)
-  List<String> gerarHorarios() {
-    List<String> horarios = [];
-    TimeOfDay start = const TimeOfDay(hour: 8, minute: 0);
-    TimeOfDay end = const TimeOfDay(hour: 17, minute: 30);
-    TimeOfDay atual = start;
-    while (atual.hour < end.hour || (atual.hour == end.hour && atual.minute <= end.minute)) {
-      if (atual.hour < 12 || atual.hour > 13) {
-        String hora = atual.hour.toString().padLeft(2, '0');
-        String minuto = atual.minute.toString().padLeft(2, '0');
-        horarios.add('$hora:$minuto');
-      }
-      int novaHora = atual.hour;
-      int novoMinuto = atual.minute + 30;
-      if (novoMinuto >= 60) {
-        novaHora++;
-        novoMinuto -= 60;
-      }
-      atual = TimeOfDay(hour: novaHora, minute: novoMinuto);
+  Future<void> _loadEspecialidades(int clinicaId) async {
+    setState(() {
+      _isEspecialidadeLoading = true;
+      _medicos = [];
+      _horariosDisponiveis = [];
+      _selectedEspecialidade = null;
+      _selectedMedico = null;
+      _selectedDate = null;
+      _selectedHorario = null;
+    });
+    try {
+      final data = await _apiService.getEspecialidadesPorClinica(clinicaId);
+      _especialidades = data.map((e) => Especialidade(key: e['key'] as String, nome: e['nome'] as String)).toList();
+    } catch (e) {
+      _errorMessage = 'Erro ao carregar especialidades: $e';
+    } finally {
+      setState(() => _isEspecialidadeLoading = false);
     }
-    return horarios;
-  }
-  void _abrirSeletorDeHorario(BuildContext context) {
-    final List<String> horariosDisponiveis = gerarHorarios();
-    showDialog(
-      context: context,
-      builder: (BuildContext context) {
-        return Dialog(
-          backgroundColor: Colors.white,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Text(
-                  'Selecione um horário',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 15),
-                SizedBox(
-                  width: double.maxFinite,
-                  child: Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: horariosDisponiveis.map((horario) {
-                      final bool selecionado = selectedHorario == horario;
-                      return GestureDetector(
-                        onTap: () {
-                          setState(() {
-                            selectedHorario = horario;
-                          });
-                          Navigator.pop(context);
-                        },
-                        child: Container(
-                          width: 80,
-                          padding: const EdgeInsets.symmetric(vertical: 10),
-                          decoration: BoxDecoration(
-                            color: selecionado
-                                ? const Color(0xFF317714)
-                                : Colors.grey.shade200,
-                            borderRadius: BorderRadius.circular(10),
-                            border: Border.all(
-                              color: selecionado
-                                  ? const Color(0xFF317714)
-                                  : Colors.grey.shade400,
-                            ),
-                          ),
-                          alignment: Alignment.center,
-                          child: Text(
-                            horario,
-                            style: TextStyle(
-                              color: selecionado ? Colors.white : Colors.black87,
-                              fontWeight: selecionado
-                                  ? FontWeight.bold
-                                  : FontWeight.normal,
-                            ),
-                          ),
-                        ),
-                      );
-                    }).toList(),
-                  ),
-                ),
-                const SizedBox(height: 15),
-                TextButton(
-                  onPressed: () => Navigator.pop(context),
-                  child: const Text('Fechar'),
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
   }
 
+  Future<void> _loadMedicos(int clinicaId, String especialidadeKey) async {
+    setState(() {
+      _isMedicoLoading = true;
+      _horariosDisponiveis = [];
+      _selectedMedico = null;
+      _selectedDate = null;
+      _selectedHorario = null;
+    });
+    try {
+      final data = await _apiService.getMedicosPorEspecialidade(clinicaId, especialidadeKey);
+      _medicos = data.map((m) => MedicoSelecionavel(
+        id: m['id'] as int, 
+        nome: m['nome'] as String, 
+        especialidade: m['especialidade'] as String
+      )).toList();
+    } catch (e) {
+      _errorMessage = 'Erro ao carregar médicos: $e';
+    } finally {
+      setState(() => _isMedicoLoading = false);
+    }
+  }
+  
+  Future<void> _loadHorariosDisponiveis(int medicoId, DateTime data) async {
+    if (_isHorarioLoading) return;
+
+    setState(() {
+      _isHorarioLoading = true;
+      _horariosDisponiveis = [];
+      _selectedHorario = null;
+    });
+    try {
+      final horarios = await _apiService.getHorariosDisponiveis(medicoId, data);
+      _horariosDisponiveis = horarios;
+    } catch (e) {
+      _errorMessage = 'Erro ao carregar horários: $e';
+    } finally {
+      setState(() => _isHorarioLoading = false);
+    }
+  }
+  
   // --- LÓGICA DE SALVAR ATUALIZADA ---
   Future<void> _salvarNovaConsulta() async {
-    // 1. Validação dos campos
-    if (selectedEspecialidade == null ||
-        selectedMedico == null ||
-        selectedDate == null ||
-        selectedHorario == null) {
+    if (_selectedClinica == null || 
+        _selectedMedico == null ||
+        _selectedDate == null ||
+        _selectedHorario == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Por favor, preencha todos os campos.'),
@@ -175,55 +150,64 @@ class _NovaConsultaPageState extends State<NovaConsultaPage> {
       return;
     }
 
-    // 2. Inicia o loading
     setState(() => _isSaving = true);
 
     try {
-      // 3. Monta o objeto DateTime
-      final parts = selectedHorario!.split(':');
+      final parts = _selectedHorario!.split(':');
       final novaDataHora = DateTime(
-        selectedDate!.year,
-        selectedDate!.month,
-        selectedDate!.day,
+        _selectedDate!.year,
+        _selectedDate!.month,
+        _selectedDate!.day,
         int.parse(parts[0]),
         int.parse(parts[1]),
       );
 
-      // 4. Chama a API
-      // (Se for reagendamento, chama a API de remarcar; senão, chama a de marcar)
-      bool success;
-      if (widget.isRescheduling) {
-        success = await _apiService.remarcarConsultaPaciente(
-          widget.consultaAntiga!.id,
-          novaDataHora,
-        );
-      } else {
-        success = await _apiService.pacienteMarcarConsulta(
-          selectedEspecialidade!,
-          selectedMedico!,
-          novaDataHora,
-        );
-      }
+      // Chama a API com os IDs (medico_id, clinica_id)
+      await _apiService.pacienteMarcarConsulta(
+          _selectedClinica!.id, 
+          _selectedMedico!.id, 
+          novaDataHora
+      );
       
-      if (!mounted) return; // Checagem de segurança
+      if (!mounted) return;
 
-      // 5. Trata a resposta
-      if (success) {
-        final successMessage = widget.isRescheduling
-            ? 'Consulta reagendada com sucesso!'
-            : 'Consulta marcada com sucesso!';
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(successMessage),
-            backgroundColor: Colors.green,
-          ),
-        );
-        Navigator.pop(context); // Fecha a tela
-      } else {
-        throw Exception(
-          widget.isRescheduling ? 'Falha ao remarcar' : 'Falha ao marcar',
-        );
-      }
+      // 👇 INÍCIO DA MODIFICAÇÃO: Pop-up de Sucesso e Redirecionamento 👇
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (BuildContext dialogContext) {
+          return AlertDialog(
+            title: const Text('Consulta Marcada!'),
+            content: const Text('Sua consulta foi agendada com sucesso e está pendente de confirmação.'),
+            actions: <Widget>[
+              TextButton(
+                child: const Text('OK'),
+                onPressed: () {
+                  // Fecha o diálogo
+                  Navigator.of(dialogContext).pop(); 
+                  // Redireciona para o Dashboard do Paciente e limpa a pilha de navegação
+                  Navigator.pushNamedAndRemoveUntil(
+                    context, 
+                    '/user/dashboard', 
+                    (Route<dynamic> route) => false
+                  );
+                },
+              ),
+            ],
+          );
+        },
+      );
+      // 👆 FIM DA MODIFICAÇÃO 👆
+
+    } on Exception catch (e) { 
+      if (!mounted) return;
+      // Captura o erro do backend e exibe a mensagem (ex: conflito de horário)
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Erro: ${e.toString().replaceFirst('Exception: ', '')}'),
+          backgroundColor: Colors.red,
+        ),
+      );
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -233,15 +217,115 @@ class _NovaConsultaPageState extends State<NovaConsultaPage> {
         ),
       );
     } finally {
-      // 6. Para o loading
       setState(() => _isSaving = false);
     }
   }
 
 
+  void _abrirSeletorDeHorario(BuildContext context) {
+    if (_selectedMedico == null || _selectedDate == null) return;
+    
+    // Recarrega os horários antes de abrir (boa prática)
+    _loadHorariosDisponiveis(_selectedMedico!.id, _selectedDate!).then((_) {
+        // Se ainda houver horários e o widget estiver montado, abre o dialog
+        if (_horariosDisponiveis.isNotEmpty && mounted) {
+           showDialog(
+             context: context,
+             builder: (BuildContext context) {
+               return Dialog(
+                 backgroundColor: Colors.white,
+                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                 child: Padding(
+                   padding: const EdgeInsets.all(16),
+                   child: Column(
+                     mainAxisSize: MainAxisSize.min,
+                     children: [
+                       const Text(
+                         'Selecione um horário',
+                         style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                       ),
+                       const SizedBox(height: 15),
+                       SizedBox(
+                         width: double.maxFinite,
+                         child: Wrap(
+                           spacing: 8,
+                           runSpacing: 8,
+                           children: _horariosDisponiveis.map((horario) {
+                             final bool selecionado = _selectedHorario == horario;
+                             return GestureDetector(
+                               onTap: () {
+                                 setState(() {
+                                   _selectedHorario = horario;
+                                 });
+                                 Navigator.pop(context);
+                               },
+                               child: Container(
+                                 width: 80,
+                                 padding: const EdgeInsets.symmetric(vertical: 10),
+                                 decoration: BoxDecoration(
+                                   color: selecionado
+                                       ? const Color(0xFF317714)
+                                       : Colors.grey.shade200,
+                                   borderRadius: BorderRadius.circular(10),
+                                   border: Border.all(
+                                     color: selecionado
+                                         ? const Color(0xFF317714)
+                                         : Colors.grey.shade400,
+                                   ),
+                                 ),
+                                 alignment: Alignment.center,
+                                 child: Text(
+                                   horario,
+                                   style: TextStyle(
+                                     color: selecionado ? Colors.white : Colors.black87,
+                                     fontWeight: selecionado
+                                         ? FontWeight.bold
+                                         : FontWeight.normal,
+                                   ),
+                                 ),
+                               ),
+                             );
+                           }).toList(),
+                         ),
+                       ),
+                       const SizedBox(height: 15),
+                       TextButton(
+                         onPressed: () => Navigator.pop(context),
+                         child: const Text('Fechar'),
+                       ),
+                     ],
+                   ),
+                 ),
+               );
+             },
+           );
+        } else if (mounted) {
+             ScaffoldMessenger.of(context).showSnackBar(
+               const SnackBar(
+                 content: Text('Nenhum horário disponível neste dia.'),
+                 backgroundColor: Colors.orange,
+               ),
+             );
+        }
+    });
+
+  }
+  
+  // --- NOVA FUNÇÃO PARA FORMATAR O NOME ---
+  String _formatarNomeMedico(String nomeCompleto) {
+    // Lógica para detectar se o nome já tem prefixo (ex: Dr. ou Dra.)
+    if (nomeCompleto.toLowerCase().startsWith('dr.') || nomeCompleto.toLowerCase().startsWith('dra.')) {
+      return nomeCompleto;
+    }
+    
+    // Se não tiver, adiciona o prefixo Dr(a)
+    return 'Dr(a) $nomeCompleto';
+  }
+  // --- FIM DA NOVA FUNÇÃO ---
+
+
   @override
   Widget build(BuildContext context) {
-    // (O build() principal permanece o mesmo)
     return Scaffold(
       backgroundColor: const Color(0xFF5BBCDC),
       body: SafeArea(
@@ -274,107 +358,97 @@ class _NovaConsultaPageState extends State<NovaConsultaPage> {
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Text(
-                          widget.isRescheduling
-                              ? 'Reagendar Consulta'
-                              : 'Nova Consulta',
+                          'Nova Consulta',
                           style: const TextStyle(
                             fontSize: 20,
                             fontWeight: FontWeight.bold,
                           ),
                         ),
-                        if (widget.isRescheduling &&
-                            widget.consultaAntiga != null) ...[
-                          const SizedBox(height: 8),
-                          Text(
-                            'Consulta original: ${DateFormat("dd/MM/yyyy 'às' HH:mm", "pt_BR").format(widget.consultaAntiga!.data)}',
-                            style: const TextStyle(color: Colors.grey),
-                            textAlign: TextAlign.center,
+                        if (_errorMessage != null) 
+                          Padding(
+                            padding: const EdgeInsets.only(top: 10),
+                            child: Text(_errorMessage!, style: const TextStyle(color: Colors.red)),
                           ),
-                        ],
                         const SizedBox(height: 20),
                         
-                        // (Os campos de Especialidade e Médico permanecem os mesmos)
-                        const Align(
-                          alignment: Alignment.centerLeft,
-                          child: Text(
-                            'Especialidade',
-                            style: TextStyle(fontSize: 14, color: Colors.grey),
-                          ),
-                        ),
-                        const SizedBox(height: 5),
-                        DropdownButtonFormField<String>(
-                          value: selectedEspecialidade,
-                          items: especialidades
-                              .map((e) =>
-                                  DropdownMenuItem(value: e, child: Text(e)))
+                        // --- 1. SELEÇÃO DE CLÍNICA ---
+                        _buildSectionTitle('Clínica'),
+                        _isClinicaLoading ? const Center(child: CircularProgressIndicator()) :
+                        DropdownButtonFormField<Clinica>(
+                          value: _selectedClinica,
+                          items: _clinicas
+                              .map((c) => DropdownMenuItem(value: c, child: Text(c.nome)))
                               .toList(),
                           onChanged: (value) {
                             setState(() {
-                              selectedEspecialidade = value;
+                              _selectedClinica = value;
+                              _selectedEspecialidade = null;
+                              _selectedMedico = null;
                             });
+                            if (value != null) _loadEspecialidades(value.id);
                           },
-                          decoration: InputDecoration(
-                            contentPadding:
-                                const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            filled: true,
-                            fillColor: Colors.grey.shade100,
-                          ),
-                        ),
-                        const SizedBox(height: 15),
-                        const Align(
-                          alignment: Alignment.centerLeft,
-                          child: Text(
-                            'Médico',
-                            style: TextStyle(fontSize: 14, color: Colors.grey),
-                          ),
-                        ),
-                        const SizedBox(height: 5),
-                        DropdownButtonFormField<String>(
-                          value: selectedMedico,
-                          items: medicos
-                              .map((e) =>
-                                  DropdownMenuItem(value: e, child: Text(e)))
-                              .toList(),
-                          onChanged: (value) {
-                            setState(() {
-                              selectedMedico = value;
-                            });
-                          },
-                          decoration: InputDecoration(
-                            contentPadding:
-                                const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            filled: true,
-                            fillColor: Colors.grey.shade100,
-                          ),
+                          decoration: _inputDecoration(),
                         ),
                         const SizedBox(height: 15),
 
-                        // (Os campos de Data e Horário permanecem os mesmos)
-                        const Align(
-                          alignment: Alignment.centerLeft,
-                          child: Text(
-                            'Nova Data da Consulta',
-                            style: TextStyle(fontSize: 14, color: Colors.grey),
-                          ),
+                        // --- 2. SELEÇÃO DE ESPECIALIDADE ---
+                        _buildSectionTitle('Especialidade'),
+                        _isEspecialidadeLoading ? const Center(child: CircularProgressIndicator()) :
+                        DropdownButtonFormField<Especialidade>(
+                          value: _selectedEspecialidade,
+                          items: _especialidades
+                              .map((e) => DropdownMenuItem(value: e, child: Text(e.nome)))
+                              .toList(),
+                          onChanged: _selectedClinica == null ? null : (value) {
+                            setState(() {
+                              _selectedEspecialidade = value;
+                              _selectedMedico = null;
+                            });
+                            if (value != null && _selectedClinica != null) {
+                               _loadMedicos(_selectedClinica!.id, value.key);
+                            }
+                          },
+                          decoration: _inputDecoration(),
                         ),
-                        const SizedBox(height: 5),
+                        const SizedBox(height: 15),
+
+                        // --- 3. SELEÇÃO DE MÉDICO ---
+                        _buildSectionTitle('Médico'),
+                        _isMedicoLoading ? const Center(child: CircularProgressIndicator()) :
+                        DropdownButtonFormField<MedicoSelecionavel>(
+                          value: _selectedMedico,
+                          items: _medicos
+                              .map((m) => DropdownMenuItem(
+                                    value: m, 
+                                    child: Text(_formatarNomeMedico(m.nome))
+                                  ))
+                              .toList(),
+                          onChanged: _selectedEspecialidade == null ? null : (value) {
+                            setState(() {
+                              _selectedMedico = value;
+                              _selectedDate = null;
+                              _selectedHorario = null;
+                            });
+                          },
+                          decoration: _inputDecoration(),
+                        ),
+                        const SizedBox(height: 15),
+
+                        // --- 4. SELEÇÃO DE DATA ---
+                        _buildSectionTitle('Data da Consulta'),
                         GestureDetector(
-                          onTap: () async {
+                          onTap: _selectedMedico == null ? null : () async {
                             DateTime? picked = await showDatePicker(
                               context: context,
-                              initialDate: selectedDate ?? DateTime.now(),
-                              firstDate: DateTime.now(),
+                              initialDate: _selectedDate ?? DateTime.now().add(const Duration(days: 1)),
+                              firstDate: DateTime.now().add(const Duration(days: 1)),
                               lastDate: DateTime(2030),
+                              locale: const Locale('pt', 'BR'),
                             );
                             if (picked != null) {
                               setState(() {
-                                selectedDate = picked;
+                                _selectedDate = picked;
+                                _selectedHorario = null;
                               });
                             }
                           },
@@ -383,17 +457,17 @@ class _NovaConsultaPageState extends State<NovaConsultaPage> {
                             padding: const EdgeInsets.symmetric(
                                 horizontal: 12, vertical: 14),
                             decoration: BoxDecoration(
-                              color: Colors.grey.shade100,
+                              color: _selectedMedico == null ? Colors.grey.shade200 : Colors.grey.shade100,
                               borderRadius: BorderRadius.circular(12),
                               border: Border.all(color: Colors.grey.shade300),
                             ),
                             child: Text(
-                              selectedDate != null
+                              _selectedDate != null
                                   ? DateFormat('dd/MM/yyyy')
-                                      .format(selectedDate!)
+                                      .format(_selectedDate!)
                                   : 'Selecione a data',
                               style: TextStyle(
-                                color: selectedDate != null
+                                color: _selectedDate != null
                                     ? Colors.black
                                     : Colors.grey,
                               ),
@@ -401,43 +475,39 @@ class _NovaConsultaPageState extends State<NovaConsultaPage> {
                           ),
                         ),
                         const SizedBox(height: 20),
-                        const Align(
-                          alignment: Alignment.centerLeft,
-                          child: Text(
-                            'Novo Horário da Consulta',
-                            style: TextStyle(fontSize: 14, color: Colors.grey),
-                          ),
-                        ),
-                        const SizedBox(height: 5),
+                        
+                        // --- 5. SELEÇÃO DE HORÁRIO ---
+                        _buildSectionTitle('Horário da Consulta'),
                         GestureDetector(
-                          onTap: () => _abrirSeletorDeHorario(context),
+                          onTap: _selectedDate == null ? null : () => _abrirSeletorDeHorario(context),
                           child: Container(
                             width: double.infinity,
                             padding: const EdgeInsets.symmetric(
                                 horizontal: 12, vertical: 14),
                             decoration: BoxDecoration(
-                              color: Colors.grey.shade100,
+                              color: _selectedDate == null ? Colors.grey.shade200 : (_isHorarioLoading ? Colors.orange.shade100 : Colors.grey.shade100),
                               borderRadius: BorderRadius.circular(12),
                               border: Border.all(color: Colors.grey.shade300),
                             ),
-                            child: Text(
-                              selectedHorario ?? 'Selecione o horário',
-                              style: TextStyle(
-                                color: selectedHorario != null
-                                    ? Colors.black
-                                    : Colors.grey,
+                            child: _isHorarioLoading 
+                              ? const Text('Carregando horários...', style: TextStyle(color: Colors.orange))
+                              : Text(
+                                _selectedHorario ?? 'Selecione o horário',
+                                style: TextStyle(
+                                  color: _selectedHorario != null
+                                      ? Colors.black
+                                      : Colors.grey,
+                                ),
                               ),
-                            ),
                           ),
                         ),
                         const SizedBox(height: 25),
 
-                        // --- BOTÕES ATUALIZADOS ---
+                        // --- BOTÕES ---
                         Row(
                           children: [
                             Expanded(
                               child: OutlinedButton(
-                                // Desabilita o botão de cancelar durante o save
                                 onPressed: _isSaving ? null : () {
                                   Navigator.pop(context);
                                 },
@@ -457,8 +527,6 @@ class _NovaConsultaPageState extends State<NovaConsultaPage> {
                             const SizedBox(width: 10),
                             Expanded(
                               child: ElevatedButton(
-                                // Chama a nova função _salvarNovaConsulta
-                                // e desabilita o botão se _isSaving for true
                                 onPressed: _isSaving ? null : _salvarNovaConsulta,
                                 style: ElevatedButton.styleFrom(
                                   backgroundColor: const Color(0xFF317714),
@@ -466,7 +534,6 @@ class _NovaConsultaPageState extends State<NovaConsultaPage> {
                                     borderRadius: BorderRadius.circular(12),
                                   ),
                                 ),
-                                // Mostra o loading ou o texto
                                 child: _isSaving 
                                   ? const SizedBox(
                                       width: 20, 
@@ -490,6 +557,29 @@ class _NovaConsultaPageState extends State<NovaConsultaPage> {
           ],
         ),
       ),
+    );
+  }
+  
+  // Helper para o estilo dos Dropdowns
+  Widget _buildSectionTitle(String title) {
+     return Align(
+          alignment: Alignment.centerLeft,
+          child: Text(
+            title,
+            style: const TextStyle(fontSize: 14, color: Colors.grey),
+          ),
+        );
+  }
+  
+  InputDecoration _inputDecoration() {
+    return InputDecoration(
+      contentPadding:
+          const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+      ),
+      filled: true,
+      fillColor: Colors.grey.shade100,
     );
   }
 }

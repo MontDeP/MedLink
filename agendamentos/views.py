@@ -12,8 +12,14 @@ from rest_framework.permissions import IsAuthenticated
 from .models import Consulta, Pagamento, ConsultaStatusLog, AnotacaoConsulta
 from .serializers import ConsultaSerializer, AnotacaoConsultaSerializer
 from users.permissions import IsMedicoOrSecretaria
-from .consts import STATUS_CONSULTA_CONCLUIDA, STATUS_CONSULTA_CHOICES
+from .consts import STATUS_CONSULTA_CONCLUIDA, STATUS_CONSULTA_CHOICES, STATUS_CONSULTA_PENDENTE
 from users.permissions import IsMedicoUser, HasRole
+from clinicas.models import Clinica # <<< Novo import
+from medicos.models import Medico
+from users.models import User
+from datetime import timedelta, datetime, time # <<< CORRIGIDO: 'time' deve estar aqui
+from pacientes.models import Paciente # <<< CORREÇÃO APLICADA AQUI
+from django.db.models import Q
 
 class ConsultaAPIView(APIView):
     """
@@ -71,35 +77,31 @@ class ConsultaAPIView(APIView):
             medico = serializer.validated_data['medico']
             paciente = serializer.validated_data['paciente']
 
-            # --- JANELA MÍNIMA DE 30 MINUTOS ---
-            janela_inicio = data_hora - timedelta(minutes=30)
-            janela_fim = data_hora + timedelta(minutes=30)
-
-            # Conflito por médico (qualquer consulta no intervalo)
+            # --- CORREÇÃO: CONFLITO DISCRETO PARA SLOTS DE 30 MINUTOS ---
+            # Checa APENAS se o horário de INÍCIO proposto (data_hora) está ocupado.
+            
+            # Conflito por médico (Slot Atual)
             conflito_medico = Consulta.objects.filter(
                 medico=medico,
-                data_hora__gte=janela_inicio,
-                data_hora__lt=janela_fim,
+                data_hora=data_hora 
             ).exists()
             if conflito_medico:
                 return Response(
-                    {"error": "O médico já possui consulta em uma janela de 30 minutos neste horário."},
+                    {"error": "O médico já possui consulta no horário proposto."},
                     status=status.HTTP_400_BAD_REQUEST
                 )
 
-            # Conflito por paciente (qualquer consulta no intervalo)
+            # Conflito por paciente (Slot Atual)
             conflito_paciente = Consulta.objects.filter(
                 paciente=paciente,
-                data_hora__gte=janela_inicio,
-                data_hora__lt=janela_fim,
+                data_hora=data_hora
             ).exists()
             if conflito_paciente:
                 return Response(
-                    {"error": "O paciente já possui consulta em uma janela de 30 minutos neste horário."},
+                    {"error": "O paciente já possui consulta neste horário."},
                     status=status.HTTP_400_BAD_REQUEST
                 )
-
-            # ...existing code (criar consulta, pagamento e log)...
+            # --- FIM DA CORREÇÃO ---
             try:
                 with transaction.atomic():
                     consulta = serializer.save()
@@ -132,34 +134,31 @@ class ConsultaAPIView(APIView):
             medico = serializer.validated_data.get('medico', consulta.medico)
             paciente = serializer.validated_data.get('paciente', consulta.paciente)
 
-            # --- JANELA MÍNIMA DE 30 MINUTOS PARA REMARCAÇÃO ---
-            janela_inicio = data_hora_nova - timedelta(minutes=30)
-            janela_fim = data_hora_nova + timedelta(minutes=30)
-
-            # Conflito por médico (exclui a própria consulta)
+            # --- CORREÇÃO: CONFLITO DISCRETO PARA SLOTS DE 30 MINUTOS (Remarcação) ---
+            
+            # Conflito por médico (Slot Atual)
             conflito_medico = Consulta.objects.filter(
                 medico=medico,
-                data_hora__gte=janela_inicio,
-                data_hora__lt=janela_fim,
+                data_hora=data_hora_nova
             ).exclude(pk=pk).exists()
             if conflito_medico:
                 return Response(
-                    {"error": "O médico já possui consulta em uma janela de 30 minutos neste novo horário."},
+                    {"error": "O médico já possui consulta no novo horário proposto."},
                     status=status.HTTP_400_BAD_REQUEST
                 )
 
-            # Conflito por paciente (exclui a própria consulta)
+            # Conflito por paciente (Slot Atual)
             conflito_paciente = Consulta.objects.filter(
                 paciente=paciente,
-                data_hora__gte=janela_inicio,
-                data_hora__lt=janela_fim,
+                data_hora=data_hora_nova
             ).exclude(pk=pk).exists()
             if conflito_paciente:
                 return Response(
-                    {"error": "O paciente já possui consulta em uma janela de 30 minutos neste novo horário."},
+                    {"error": "O paciente já possui consulta neste novo horário."},
                     status=status.HTTP_400_BAD_REQUEST
                 )
-
+            # --- FIM DA CORREÇÃO ---
+            
             # ...existing code (salvar atualização e log se status mudar)...
             try:
                 with transaction.atomic():
@@ -328,15 +327,16 @@ class FinalizarConsultaAPIView(APIView):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
+
 class PacienteMarcarConsultaView(APIView):
     """
     Endpoint para o PACIENTE logado marcar uma nova consulta.
-    Recebe POST em /api/agendamentos/paciente-marcar/
+    NOVO: Recebe 'medico_id', 'clinica_id' e 'data_hora'.
     """
     permission_classes = [IsAuthenticated]
 
     def post(self, request, *args, **kwargs):
-        # 1. Validação do Paciente
+        # 1. Validação do Paciente e dados
         if not request.user.user_type == 'PACIENTE':
             return Response({"error": "Apenas pacientes podem marcar consultas."}, status=status.HTTP_403_FORBIDDEN)
         
@@ -345,61 +345,62 @@ class PacienteMarcarConsultaView(APIView):
         except Paciente.DoesNotExist:
             return Response({"error": "Perfil de paciente não encontrado."}, status=status.HTTP_404_NOT_FOUND)
 
-        # 2. Obter dados da request (conforme api_service.dart)
-        medico_nome = request.data.get('medico_nome')
-        especialidade_nome = request.data.get('especialidade_nome')
+        medico_id = request.data.get('medico_id')
+        clinica_id = request.data.get('clinica_id')
         data_hora_str = request.data.get('data_hora')
 
-        if not all([medico_nome, especialidade_nome, data_hora_str]):
-            return Response({"error": "Campos 'medico_nome', 'especialidade_nome' e 'data_hora' são obrigatórios."}, status=status.HTTP_400_BAD_REQUEST)
+        if not all([medico_id, clinica_id, data_hora_str]):
+            return Response({"error": "Campos 'medico_id', 'clinica_id' e 'data_hora' são obrigatórios."}, status=status.HTTP_400_BAD_REQUEST)
 
         try:
-            # 3. Encontrar o médico pelo nome e especialidade
-            # Isso é frágil, pois depende dos nomes exatos do frontend
+            medico_user = User.objects.get(pk=medico_id, user_type='MEDICO')
+            clinica = Clinica.objects.get(pk=clinica_id)
             
-            # Converte o nome da especialidade (Ex: "Cardiologia") para a chave (Ex: "CARDIOLOGIA")
-            especialidade_key = None
-            for key, value in Medico.EspecialidadeChoices.choices:
-                if value.lower() == especialidade_nome.lower():
-                    especialidade_key = key
-                    break
+            # --- INÍCIO DA CORREÇÃO DE FUSO HORÁRIO (USE_TZ=False) ---
+            data_hora = datetime.fromisoformat(data_hora_str)
+            if timezone.is_aware(data_hora):
+                data_hora = timezone.make_naive(data_hora)
+            # --- FIM DA CORREÇÃO DE FUSO HORÁRIO ---
+
+            # --- CORREÇÃO: CONFLITO DISCRETO (Slot Atual) ---
             
-            if not especialidade_key:
-                return Response({"error": f"Especialidade '{especialidade_nome}' não encontrada."}, status=status.HTTP_404_NOT_FOUND)
+            # Conflito por médico (Slot Atual)
+            conflito_medico = Consulta.objects.filter(
+                medico=medico_user,
+                data_hora=data_hora
+            ).exists()
+            if conflito_medico:
+                return Response(
+                    {"error": "O médico já possui consulta no horário proposto."},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
 
-            # Busca Médicos pelo perfil e tipo de usuário
-            medicos_possiveis = User.objects.filter(
-                user_type='MEDICO',
-                perfil_medico__especialidade=especialidade_key
-            )
-
-            # Tenta encontrar o nome exato na lista
-            medico_user = None
-            for m in medicos_possiveis:
-                if m.get_full_name().lower() == medico_nome.lower():
-                    medico_user = m
-                    break
+            # Conflito por paciente (Slot Atual)
+            conflito_paciente = Consulta.objects.filter(
+                paciente=paciente,
+                data_hora=data_hora
+            ).exists()
+            if conflito_paciente:
+                return Response(
+                    {"error": "O paciente já possui consulta neste horário."},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            # --- FIM DA CORREÇÃO ---
             
-            if not medico_user:
-                 return Response({"error": f"Médico '{medico_nome}' não encontrado para esta especialidade."}, status=status.HTTP_404_NOT_FOUND)
-
-            # 4. Obter a clínica do médico (PARA A SECRETÁRIA VER)
-            perfil = medico_user.perfil_medico
-            if not perfil or not perfil.clinica:
-                return Response({"error": "Médico não está associado a nenhuma clínica."}, status=status.HTTP_400_BAD_REQUEST)
-
-            # 5. Criar a consulta
+            # 5. Cria a consulta
             Consulta.objects.create(
                 paciente=paciente,
                 medico=medico_user,
                 clinica=clinica,
-                data_hora=data_hora_str,
-                status_atual=STATUS_CONSULTA_PENDENTE, # Importado de consts.py
-                valor=0.00 # Paciente não define valor, pode ser 0 ou um valor padrão
+                data_hora=data_hora,
+                status_atual=STATUS_CONSULTA_PENDENTE,
+                valor=0.00
             )
             
             return Response({"message": "Consulta marcada com sucesso!"}, status=status.HTTP_201_CREATED)
 
+        except (User.DoesNotExist, Clinica.DoesNotExist):
+            return Response({"error": "Médico ou clínica não encontrados."}, status=status.HTTP_404_NOT_FOUND)
         except Exception as e:
             return Response({"error": f"Erro ao processar a marcação: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
@@ -439,26 +440,65 @@ class PacienteRemarcarConsultaView(APIView):
 
             try:
                 data_hora_nova = datetime.fromisoformat(data_hora_nova_str)
-                if timezone.is_naive(data_hora_nova):
-                    data_hora_nova = timezone.make_aware(data_hora_nova)
+                
+                # CORREÇÃO: Normaliza a data de entrada antes da validação
+                if timezone.is_aware(data_hora_nova):
+                    data_hora_nova = timezone.make_naive(data_hora_nova)
+
             except ValueError:
                 return Response(
                     {"error": "Formato de data/hora inválido. Use o padrão ISO 8601 (YYYY-MM-DDTHH:MM:SS)."},
                     status=status.HTTP_400_BAD_REQUEST
                 )
-
-            # 4. Validação: só pode remarcar com pelo menos 3 dias de antecedência
-            data_consulta_aware = consulta.data_hora
-            if timezone.is_naive(data_consulta_aware):
-                data_consulta_aware = timezone.make_aware(data_consulta_aware)
-
-            if (data_consulta_aware - timezone.now()).days < 3:
-                return Response(
-                    {"error": "Não é possível remarcar com menos de 3 dias de antecedência."},
+                
+            # --- VALIDAÇÃO DE DATA (Backend) ---
+            
+            # 4. Checagem de Dia de Funcionamento (Não permite Sábados=5 ou Domingos=6)
+            if data_hora_nova.weekday() >= 5: 
+                 return Response(
+                    {"error": "Não é possível agendar consultas em Sábados ou Domingos."},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # 5. Checagem de Data Passada (API não permite)
+            if data_hora_nova < timezone.now():
+                 return Response(
+                    {"error": "Não é possível remarcar para uma data no passado."},
                     status=status.HTTP_400_BAD_REQUEST
                 )
 
-            # 5. Atualiza e salva
+            # 6. Validação: Apenas pode remarcar com pelo menos 3 dias de antecedência
+            # Nota: É mais seguro checar a diferença entre a data AGORA e a data NOVA, 
+            # pois a data antiga já passou pelo filtro.
+            if (data_hora_nova - timezone.now()).days < 3: 
+                return Response(
+                    {"error": "Não é possível remarcar para menos de 3 dias de antecedência a partir de hoje."},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            # 7. CONFLITO DISCRETO (Checagem de slot vazio) ---
+            conflito_medico = Consulta.objects.filter(
+                medico=consulta.medico,
+                data_hora=data_hora_nova
+            ).exclude(pk=pk).exists()
+            if conflito_medico:
+                return Response(
+                    {"error": "O médico já possui agendamento neste horário."},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            conflito_paciente = Consulta.objects.filter(
+                paciente=consulta.paciente,
+                data_hora=data_hora_nova
+            ).exclude(pk=pk).exists()
+            if conflito_paciente:
+                return Response(
+                    {"error": "Você já possui agendamento neste horário."},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            # --- FIM DA VALIDAÇÃO E CONFLITO ---
+
+            # 8. Atualiza e salva
             consulta.data_hora = data_hora_nova
             if 'REAGENDADA' in [choice[0] for choice in STATUS_CONSULTA_CHOICES]:
                 consulta.status_atual = 'REAGENDADA'
@@ -467,7 +507,7 @@ class PacienteRemarcarConsultaView(APIView):
 
             consulta.save()
 
-            # 6. Log
+            # 9. Log
             ConsultaStatusLog.objects.create(
                 consulta=consulta,
                 status_novo=consulta.status_atual,
@@ -477,7 +517,125 @@ class PacienteRemarcarConsultaView(APIView):
             return Response({"message": "Consulta remarcada com sucesso!"}, status=status.HTTP_200_OK)
 
         except Exception as e:
+            # CORREÇÃO: Capturar e retornar o erro real para debug do front-end
             return Response(
                 {"error": f"Erro interno ao salvar a remarcação: {str(e)}"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
+
+class ClinicaListView(APIView):
+    """Retorna todas as clínicas ativas para seleção de agendamento."""
+    permission_classes = [IsAuthenticated] 
+
+    def get(self, request):
+        clinicas = Clinica.objects.all().values('pk', 'nome_fantasia')
+        data = [{'id': c['pk'], 'nome': c['nome_fantasia']} for c in clinicas]
+        return Response(data, status=status.HTTP_200_OK)
+
+class ClinicaEspecialidadeListView(APIView):
+    """Retorna as especialidades distintas dos médicos vinculados a uma clínica."""
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, clinica_pk):
+        medicos_na_clinica = Medico.objects.filter(clinicas__pk=clinica_pk).distinct()
+        especialidade_keys = medicos_na_clinica.values_list('especialidade', flat=True).distinct()
+        
+        especialidades = []
+        for key in especialidade_keys:
+            # Converte a chave (CARDIOLOGIA) para o nome de exibição (Cardiologia)
+            display_name = Medico.EspecialidadeChoices(key).label 
+            especialidades.append({'key': key, 'nome': display_name})
+            
+        return Response(especialidades, status=status.HTTP_200_OK)
+
+class EspecialidadeMedicoListView(APIView):
+    """Retorna os médicos ativos em uma clínica e com uma especialidade específica."""
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, clinica_pk, especialidade_key):
+        medicos = Medico.objects.filter(
+            clinicas__pk=clinica_pk, 
+            especialidade=especialidade_key, 
+            user__is_active=True 
+        ).select_related('user').order_by('user__first_name')
+        
+        data = []
+        for medico in medicos:
+            data.append({
+                'id': medico.user.id, 
+                'nome': medico.user.get_full_name(),
+                'crm': medico.crm,
+                'especialidade': medico.get_especialidade_display(), 
+            })
+            
+        return Response(data, status=status.HTTP_200_OK)
+
+class MedicoHorariosDisponiveisView(APIView):
+    """
+    Retorna os horários de 30 em 30 minutos em que o médico não tem conflito 
+    de consulta para a data fornecida. (Reutiliza lógica da secretaria)
+    """
+    permission_classes = [IsAuthenticated]
+    INTERVALO_MINUTOS = 30
+    HORA_INICIO_PADRAO = 8
+    HORA_FIM_PADRAO = 20 # <<< CORRIGIDO PARA 20 (8 PM)
+    ALMOCO_INICIO = 12
+    ALMOCO_FIM = 13
+
+    def get(self, request, medico_pk):
+        # ... (restante do código da função)
+        try:
+            medico = User.objects.get(pk=medico_pk, user_type='MEDICO')
+        except User.DoesNotExist:
+            return Response({"error": "Médico não encontrado."}, status=status.HTTP_404_NOT_FOUND)
+
+        data_str = request.query_params.get('data')
+        
+        if not data_str:
+            # Retorno simplificado para guiar o paciente no calendário (opcional)
+            hoje = timezone.now().date()
+            proximo_dia_util = hoje + timedelta(days=1)
+            while proximo_dia_util.weekday() >= 5: 
+                proximo_dia_util += timedelta(days=1)
+            datas_sugeridas = [(proximo_dia_util + timedelta(days=i)).strftime('%Y-%m-%d') for i in range(7)]
+            return Response({'datas_sugeridas': datas_sugeridas}, status=status.HTTP_200_OK)
+
+        try:
+            data_alvo = datetime.strptime(data_str, '%Y-%m-%d').date()
+        except ValueError:
+            return Response({"error": "Formato de data inválido. Use YYYY-MM-DD."}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Horários ocupados (lógica de conflito de 30 minutos)
+        consultas_ocupadas = Consulta.objects.filter(
+            medico=medico,
+            data_hora__date=data_alvo
+        ).values_list('data_hora', flat=True)
+        
+        ocupados = set()
+        for dh in consultas_ocupadas:
+            inicio_naive = timezone.make_naive(dh) if timezone.is_aware(dh) else dh
+            ocupados.add(inicio_naive.time())
+            # Slots de 30 min antes e depois do início de uma consulta existente também são bloqueados
+            # A checagem de conflito discreto (abaixo) garante que apenas o slot anterior seja bloqueado
+            # se estiver sendo usado, mas aqui no horário disponível, usamos o slot
+            # e não o anterior. A verificação do slot anterior é feita no POST.
+        
+        # Gera todos os slots
+        slots_disponiveis = []
+        hora = self.HORA_INICIO_PADRAO
+        minuto = 0
+        while hora < self.HORA_FIM_PADRAO or (hora == self.HORA_FIM_PADRAO and minuto == 0):
+            slot_time = time(hour=hora, minute=minuto)
+            
+            # Pula o horário de almoço (12:00 a 12:59)
+            if not (self.ALMOCO_INICIO <= hora < self.ALMOCO_FIM):
+                 # Checa se este slot está na lista de horários de início de consultas existentes
+                 if slot_time not in [timezone.make_naive(dh).time() if timezone.is_aware(dh) else dh.time() for dh in consultas_ocupadas]:
+                    slots_disponiveis.append(slot_time.strftime('%H:%M'))
+
+            minuto += self.INTERVALO_MINUTOS
+            if minuto >= 60:
+                hora += 1
+                minuto -= 60
+
+        return Response(slots_disponiveis, status=status.HTTP_200_OK)
