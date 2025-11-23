@@ -44,6 +44,9 @@ class MedicoAgendaAPIView(APIView):
             medico=medico,
             data_hora__year=year,
             data_hora__month=month
+        ).exclude( # <--- CORREÇÃO APLICADA AQUI
+            # Exclui consultas com status 'CANCELADA' (ignora case)
+            status_atual__iexact='CANCELADA' 
         ).select_related('paciente__user').order_by('data_hora')
 
         # Agrupa as consultas por dia

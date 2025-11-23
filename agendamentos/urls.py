@@ -1,5 +1,5 @@
 from django.urls import path
-from .views import ConsultaAPIView, ConsultaStatusUpdateView, PagamentoUpdateView, AnotacaoConsultaView, FinalizarConsultaAPIView, PacienteMarcarConsultaView, PacienteRemarcarConsultaView
+from .views import ConsultaAPIView, ConsultaStatusUpdateView, PagamentoUpdateView, AnotacaoConsultaView, FinalizarConsultaAPIView, PacienteMarcarConsultaView, PacienteRemarcarConsultaView, ClinicaListView, ClinicaEspecialidadeListView, EspecialidadeMedicoListView, MedicoHorariosDisponiveisView, PacienteCancelarConsultaView, PacienteConsultaListView
 
 urlpatterns = [
     # Listar/criar consultas
@@ -14,7 +14,12 @@ urlpatterns = [
     path('<int:pk>/anotacao/', AnotacaoConsultaView.as_view(), name='agendamentos-anotacao'),
     # Finalizar consulta
     path('<int:pk>/finalizar/', FinalizarConsultaAPIView.as_view(), name='agendamentos-finalizar'),
-
+    path('paciente/consultas/', PacienteConsultaListView.as_view(), name='paciente-consultas-list'), # NOVO ENDPOINT DE LISTAGEM FILTRADA
     path('paciente-marcar/', PacienteMarcarConsultaView.as_view(), name='paciente-marcar-consulta' ),
     path('<int:pk>/paciente-remarcar/', PacienteRemarcarConsultaView.as_view(), name='paciente-remarcar-consulta'),
+    path('clinicas/', ClinicaListView.as_view(), name='agendamentos-clinica-list'),
+    path('clinicas/<int:clinica_pk>/especialidades/', ClinicaEspecialidadeListView.as_view(), name='agendamentos-especialidades'),
+    path('clinicas/<int:clinica_pk>/especialidades/<str:especialidade_key>/medicos/', EspecialidadeMedicoListView.as_view(), name='agendamentos-medicos'),
+    path('medicos/<int:medico_pk>/horarios-disponiveis/', MedicoHorariosDisponiveisView.as_view(), name='medico-horarios-disponiveis'),
+    path('<int:pk>/paciente-cancelar/', PacienteCancelarConsultaView.as_view(), name='paciente-cancelar-consulta'),
 ]
