@@ -15,7 +15,6 @@ from users.permissions import IsMedicoOrSecretaria
 from .consts import STATUS_CONSULTA_CONCLUIDA, STATUS_CONSULTA_CHOICES
 from users.permissions import IsMedicoUser, HasRole
 
-
 class ConsultaAPIView(APIView):
     """
     API para gerenciar o CRUD completo de agendamentos.

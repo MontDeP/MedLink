@@ -28,6 +28,12 @@ class Consulta(models.Model):
         verbose_name=_('Valor da Consulta')
     )
     
+    # 💥 CAMPO FALTANDO REINTRODUZIDO COM DEFAULT 💥
+    remarcacoes_paciente = models.PositiveIntegerField(
+        default=0,
+        verbose_name=_('Remarcações pelo Paciente')
+    )
+    
     # Relações de Chave Estrangeira com outros modelos:
     # 1. Com o Paciente
     paciente = models.ForeignKey(
