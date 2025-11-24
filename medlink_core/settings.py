@@ -155,7 +155,7 @@ USE_TZ = False
 
 STATIC_URL = 'static/'
 # This production code might break development mode, so we check whether we're in DEBUG mode
-if not DEBUG:
+if DEBUG:
     # Tell Django to copy static assets into a path called `staticfiles` (this is specific to Render)
     STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
 
