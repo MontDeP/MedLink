@@ -57,6 +57,7 @@ INSTALLED_APPS = [
     'django_rest_passwordreset',
     'corsheaders',
     'django_filters',
+    'anymail',
 
     # Meus Apps
     'users',
@@ -192,13 +193,18 @@ SIMPLE_JWT = {
 }
 
 
-EMAIL_BACKEND = os.getenv('EMAIL_BACKEND', 'django.core.mail.backends.smtp.EmailBackend')
-EMAIL_HOST = os.getenv('EMAIL_HOST')
-EMAIL_PORT = int(os.getenv('EMAIL_PORT', 587))
-EMAIL_USE_TLS = os.getenv('EMAIL_USE_TLS', 'True') == 'True'
-EMAIL_HOST_USER = os.getenv('EMAIL_HOST_USER')
-EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD')
-DEFAULT_FROM_EMAIL = os.getenv('DEFAULT_FROM_EMAIL', EMAIL_HOST_USER)
+# Configuração API com Django-Anymail (Brevo/Sendinblue)
+EMAIL_BACKEND = 'anymail.backends.brevo.EmailBackend' # O nome antigo 'sendinblue' também funciona
+
+# Configuração do Anymail para ler a API Key do ambiente
+ANYMAIL = {
+    # A chave 'BREVO_API_KEY' deve ser definida nas variáveis de ambiente do Render!
+    "BREVO_API_KEY": os.getenv("BREVO_API_KEY"),
+}
+
+# Mantemos o DEFAULT_FROM_EMAIL lendo do ambiente
+# Certifique-se de que esta variável esteja no Render
+DEFAULT_FROM_EMAIL = os.getenv('DEFAULT_FROM_EMAIL', 'adm.medlink@exemplo.com')
 
 # Configuração do CORS
 CORS_ALLOW_ALL_ORIGINS = True
