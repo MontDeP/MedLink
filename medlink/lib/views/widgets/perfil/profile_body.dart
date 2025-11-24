@@ -5,7 +5,7 @@ import 'package:mask_text_input_formatter/mask_text_input_formatter.dart';
 import 'package:medlink/controllers/profile_controller.dart';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
-import 'package:provider/provider.dart';
+// import 'package:provider/provider'; // REMOVIDO: Uri does not exist & Unused
 import 'profile_dialogs.dart';
 
 class ProfileBody extends StatelessWidget {
@@ -14,11 +14,11 @@ class ProfileBody extends StatelessWidget {
   final FocusNode dataNascimentoFocusNode; // <-- CORREÇÃO: Adicionado
 
   ProfileBody({
-    Key? key,
+    super.key, // CORRIGIDO: Uso de super.key
     required this.controller,
     required this.cepFocusNode,
     required this.dataNascimentoFocusNode, // <-- CORREÇÃO: Adicionado
-  }) : super(key: key);
+  });
 
   // Máscaras restantes:
   final _cpfMaskFormatter = MaskTextInputFormatter(
@@ -26,24 +26,45 @@ class ProfileBody extends StatelessWidget {
   final _dateMaskFormatter = MaskTextInputFormatter(
       mask: '##/##/####', filter: {"#": RegExp(r'[0-9]')});
 
-  // Função helper para abrir o DatePicker (mantida caso precise)
-  Future<void> _selectDate(BuildContext context, ProfileController controller) async {
-    final DateTime? picked = await showDatePicker(
-      context: context,
-      initialDate: controller.parsedDataNascimento ?? DateTime.now(),
-      firstDate: DateTime(1900),
-      lastDate: DateTime.now(),
-      locale: const Locale('pt', 'BR'),
-    );
-    if (picked != null && picked != controller.parsedDataNascimento) {
-      controller.setDataNascimento(picked);
+  // Função helper para extrair as iniciais do nome (Mantida e Corrigida)
+  String _getInitials(String fullName) {
+    // CORRIGIDO: removido fullName == null, pois String é non-nullable.
+    if (fullName.isEmpty) return 'P'; 
+    
+    // Remove espaços desnecessários e divide o nome
+    List<String> parts = fullName.trim().split(RegExp(r'\s+'));
+    String initials = '';
+
+    // Se houver apenas uma parte (ou seja, só o primeiro nome)
+    if (parts.length == 1 && parts[0].isNotEmpty) {
+      return parts[0][0].toUpperCase();
     }
+
+    // Pega a primeira letra do primeiro nome
+    if (parts.isNotEmpty && parts[0].isNotEmpty) {
+      initials += parts[0][0].toUpperCase();
+    }
+
+    // Pega a primeira letra do último nome, ignorando nomes curtos (ex: "de", "da")
+    if (parts.length > 1) {
+      String lastName = parts.last;
+      if (lastName.length > 1) {
+        initials += lastName[0].toUpperCase();
+      }
+    }
+    
+    // Se o resultado for uma única letra (após filtros), usa ela. Se for mais, usa as duas.
+    return initials.length >= 2 ? initials.substring(0, 2) : initials;
   }
 
 
   @override
   Widget build(BuildContext context) {
     final bool isReadOnly = !controller.isEditing;
+    final String initials = _getInitials(controller.nomeCompletoController.text);
+    final bool hasImage = controller.pickedImage != null || 
+                          (controller.profileImageUrl != null && controller.profileImageUrl!.isNotEmpty);
+
     final inputDecoration = InputDecoration(
       filled: true,
       fillColor: Colors.white,
@@ -93,11 +114,28 @@ class ProfileBody extends StatelessWidget {
                 top: 30,
                 child: Stack(
                   children: [
+                    // LÓGICA DO AVATAR COM INICIAIS
                     CircleAvatar(
                       radius: 70,
-                      backgroundImage: _getProfileImage(controller),
-                      backgroundColor: Colors.grey[300],
+                      // Cor de fundo padrão (ex: um azul mais forte)
+                      backgroundColor: hasImage 
+                          ? Colors.grey[300]! 
+                          : Colors.blue.shade700, 
+                      backgroundImage: hasImage 
+                          ? _getProfileImage(controller) 
+                          : null,
+                      child: hasImage
+                          ? null // Se tiver imagem, não mostra texto
+                          : Text(
+                              initials,
+                              style: const TextStyle(
+                                fontSize: 48,
+                                color: Colors.white,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
                     ),
+                    // FIM DA LÓGICA DO AVATAR
                     if (controller.isEditing)
                       Positioned(
                         bottom: 0,
@@ -423,11 +461,12 @@ class ProfileBody extends StatelessWidget {
     );
   }
 
-  ImageProvider _getProfileImage(ProfileController controller) {
+  ImageProvider? _getProfileImage(ProfileController controller) {
     if (controller.pickedImage != null) {
       if (kIsWeb) {
         return NetworkImage(controller.pickedImage!.path);
       } else {
+        // CORREÇÃO: Necessário usar FileImage se não for web
         return FileImage(File(controller.pickedImage!.path));
       }
     }
@@ -435,7 +474,7 @@ class ProfileBody extends StatelessWidget {
         controller.profileImageUrl!.isNotEmpty) {
       return NetworkImage(controller.profileImageUrl!);
     }
-    // Placeholder
-    return const NetworkImage('https://via.placeholder.com/150');
+    // Retorna null, pois o widget pai (CircleAvatar) irá exibir o Text com as iniciais.
+    return null;
   }
 }
