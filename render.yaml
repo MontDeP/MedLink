@@ -2,8 +2,8 @@ databases:
   - name: medlink-db
     databaseName: medlink_db
     user: medlink_user
-    plan: free # Plano gratuito (90 dias)
-    region: ohio # Ou frankfurt, o que preferir
+    plan: free
+    region: ohio
 
 services:
   - type: web
@@ -11,21 +11,20 @@ services:
     runtime: python
     plan: free
     
-    # IMPORTANTE: Caminho para a pasta onde está o manage.py
-    # Baseado na estrutura de arquivos que você enviou
-    rootDir: montdep/medlink/MedLink-develop
+    # CORREÇÃO AQUI: Use ponto para indicar a raiz do repositório
+    rootDir: .
     
-    # Comandos de construção e inicialização
-    buildCommand: "pip install -r requirements.txt && python manage.py collectstatic --noinput && python manage.py migrate"
+    # Comandos (verifique se build.sh existe na raiz também)
+    buildCommand: "./build.sh"
     startCommand: "gunicorn medlink_core.wsgi:application"
     
     envVars:
       - key: PYTHON_VERSION
         value: 3.10.0
       - key: SECRET_KEY
-        generateValue: true # O Render cria uma senha segura sozinho
+        generateValue: true
       - key: DEBUG
-        value: "True" # Deixar True para a banca (ver erros na tela)
+        value: "True"
       - key: ALLOWED_HOSTS
         value: "*"
       - key: DATABASE_URL
