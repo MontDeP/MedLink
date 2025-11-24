@@ -30,7 +30,7 @@ SECRET_KEY = 'django-insecure-h0+vkovyjuu922z%3yicec-71%fs%^+-yj)ytlcb9_(dojl)6!
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = ["127.0.0.1", "10.0.2.2", "localhost"]
+ALLOWED_HOSTS = ["127.0.0.1", "10.0.2.2", "localhost", "medlink-backend-9dbq.onrender.com"]
 
 
 # Application definition
