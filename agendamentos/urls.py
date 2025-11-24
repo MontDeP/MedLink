@@ -1,5 +1,5 @@
 from django.urls import path
-from .views import ConsultaAPIView, ConsultaStatusUpdateView, PagamentoUpdateView, AnotacaoConsultaView, FinalizarConsultaAPIView, PacienteMarcarConsultaView, PacienteRemarcarConsultaView, ClinicaListView, ClinicaEspecialidadeListView, EspecialidadeMedicoListView, MedicoHorariosDisponiveisView
+from .views import ConsultaAPIView, ConsultaStatusUpdateView, PagamentoUpdateView, AnotacaoConsultaView, FinalizarConsultaAPIView, PacienteMarcarConsultaView, PacienteRemarcarConsultaView, ClinicaListView, ClinicaEspecialidadeListView, EspecialidadeMedicoListView, MedicoHorariosDisponiveisView, PacienteCancelarConsultaView
 
 urlpatterns = [
     # Listar/criar consultas
@@ -17,6 +17,7 @@ urlpatterns = [
 
     path('paciente-marcar/', PacienteMarcarConsultaView.as_view(), name='paciente-marcar-consulta' ),
     path('<int:pk>/paciente-remarcar/', PacienteRemarcarConsultaView.as_view(), name='paciente-remarcar-consulta'),
+    path('<int:pk>/paciente-cancelar/', PacienteCancelarConsultaView.as_view(), name='paciente-cancelar-consulta'),
     path('clinicas/', ClinicaListView.as_view(), name='agendamentos-clinica-list'),
     path('clinicas/<int:clinica_pk>/especialidades/', ClinicaEspecialidadeListView.as_view(), name='agendamentos-especialidades'),
     path('clinicas/<int:clinica_pk>/especialidades/<str:especialidade_key>/medicos/', EspecialidadeMedicoListView.as_view(), name='agendamentos-medicos'),

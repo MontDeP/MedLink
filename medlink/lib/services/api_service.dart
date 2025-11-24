@@ -310,13 +310,10 @@ class ApiService {
     }).toList();
   }
 
-  /// Permite ao paciente remarcar uma consulta existente.
-  /// (Este método estava correto e é mantido)
-  Future<bool> remarcarConsultaPaciente(
+Future<bool> remarcarConsultaPaciente(
     int consultaId,
     DateTime novaDataHora,
   ) async {
-    // ATENÇÃO: Você precisará criar este endpoint no seu backend!
     final url = Uri.parse(
       "$baseUrl/api/agendamentos/$consultaId/paciente-remarcar/",
     );
@@ -331,8 +328,37 @@ class ApiService {
       body: jsonEncode({'data_hora': novaDataHora.toIso8601String()}),
     );
 
-    // Sucesso se for 200 OK
-    return response.statusCode == 200;
+    if (response.statusCode == 200) return true;
+    
+    // CORREÇÃO: Tratar o erro 400 Bad Request e lançar o detalhe.
+    final errorBody = jsonDecode(utf8.decode(response.bodyBytes));
+    final errorMessage = errorBody['error'] ?? 'Erro desconhecido ao remarcar (Status: ${response.statusCode})';
+    throw Exception(errorMessage);
+  }
+
+  Future<bool> pacienteCancelarConsulta(
+    int consultaId,
+  ) async {
+    final url = Uri.parse(
+      "$baseUrl/api/agendamentos/$consultaId/paciente-cancelar/", // Endpoint correto
+    );
+    if (_accessToken == null) throw Exception('Token não encontrado.');
+
+    final response = await http.patch(
+      url,
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": "Bearer $_accessToken",
+      },
+      // Não precisa de body
+    );
+
+    if (response.statusCode == 200) return true;
+    
+    // Lança exceção em caso de erro, incluindo a regra de 72h
+    final errorBody = jsonDecode(utf8.decode(response.bodyBytes));
+    final errorMessage = errorBody['error'] ?? 'Erro desconhecido.';
+    throw Exception(errorMessage);
   }
 
   // --- NOVOS MÉTODOS PARA AGENDAMENTO DO PACIENTE ---

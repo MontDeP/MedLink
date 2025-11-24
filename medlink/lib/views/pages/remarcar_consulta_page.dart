@@ -219,7 +219,7 @@ class _RemarcarConsultaPageState extends State<RemarcarConsultaPage> {
                 builder: (BuildContext dialogContext) {
                   return AlertDialog(
                     title: const Text('Consulta Reagendada!'),
-                    content: const Text('Sua consulta foi reagendada com sucesso e o médico/secretária verá a nova data.'),
+                    content: const Text('Sua consulta foi reagendada com sucesso!'),
                     actions: <Widget>[
                       TextButton(
                         child: const Text('OK'),

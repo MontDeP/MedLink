@@ -16,9 +16,9 @@ class BottomNavbar extends StatelessWidget {
     return BottomNavigationBar(
       currentIndex: currentIndex,
       onTap: onTap,
-      type: BottomNavigationBarType.fixed,
+      type: BottomNavigationBarType.fixed, // Mantém a distribuição uniforme
       backgroundColor: Colors.white,
-      selectedItemColor: const Color(0xFF0066CC), // cor principal do MedLink (ajuste depois)
+      selectedItemColor: const Color(0xFF0066CC), 
       unselectedItemColor: Colors.grey,
       showUnselectedLabels: true,
       selectedFontSize: 13,
@@ -29,11 +29,12 @@ class BottomNavbar extends StatelessWidget {
           activeIcon: Icon(Icons.home),
           label: 'Home',
         ),
-        BottomNavigationBarItem(
-          icon: Icon(Icons.notifications_none),
-          activeIcon: Icon(Icons.notifications),
-          label: 'Notificações',
-        ),
+        // Item de Notificações Removido
+        // BottomNavigationBarItem( 
+        //   icon: Icon(Icons.notifications_none),
+        //   activeIcon: Icon(Icons.notifications),
+        //   label: 'Notificações',
+        // ),
         BottomNavigationBarItem(
           icon: Icon(Icons.person_outline),
           activeIcon: Icon(Icons.person),

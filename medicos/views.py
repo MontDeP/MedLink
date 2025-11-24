@@ -10,7 +10,8 @@ from django.db.models import Q, Exists, OuterRef
 
 from agendamentos.models import Consulta, ConsultaStatusLog
 from agendamentos.serializers import ConsultaSerializer
-from agendamentos.consts import STATUS_CONSULTA_REAGENDAMENTO_SOLICITADO # <-- Importação corrigida
+# CORREÇÃO: Adicione STATUS_CONSULTA_CANCELADA
+from agendamentos.consts import STATUS_CONSULTA_REAGENDAMENTO_SOLICITADO, STATUS_CONSULTA_CANCELADA 
 from users.permissions import IsMedicoUser
 from .models import Medico
 from .serializers import MedicoSerializer
@@ -44,6 +45,8 @@ class MedicoAgendaAPIView(APIView):
             medico=medico,
             data_hora__year=year,
             data_hora__month=month
+        ).exclude( # <--- ADICIONADO: Excluir Canceladas
+            status_atual=STATUS_CONSULTA_CANCELADA
         ).select_related('paciente__user').order_by('data_hora')
 
         # Agrupa as consultas por dia
