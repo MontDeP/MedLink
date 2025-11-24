@@ -1,0 +1,33 @@
+databases:
+  - name: medlink-db
+    databaseName: medlink_db
+    user: medlink_user
+    plan: free
+    region: ohio
+
+services:
+  - type: web
+    name: medlink-backend
+    runtime: python
+    plan: free
+    
+    # CORREÇÃO AQUI: Use ponto para indicar a raiz do repositório
+    rootDir: .
+    
+    # Comandos (verifique se build.sh existe na raiz também)
+    buildCommand: "./build.sh"
+    startCommand: "gunicorn medlink_core.wsgi:application"
+    
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.10.0
+      - key: SECRET_KEY
+        generateValue: true
+      - key: DEBUG
+        value: "True"
+      - key: ALLOWED_HOSTS
+        value: "*"
+      - key: DATABASE_URL
+        fromDatabase:
+          name: medlink-db
+          property: connectionString
