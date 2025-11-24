@@ -12,7 +12,7 @@ from rest_framework.permissions import IsAuthenticated
 from .models import Consulta, Pagamento, ConsultaStatusLog, AnotacaoConsulta
 from .serializers import ConsultaSerializer, AnotacaoConsultaSerializer
 from users.permissions import IsMedicoOrSecretaria
-from .consts import STATUS_CONSULTA_CONCLUIDA, STATUS_CONSULTA_CHOICES, STATUS_CONSULTA_PENDENTE
+from .consts import STATUS_CONSULTA_CONCLUIDA, STATUS_CONSULTA_CHOICES, STATUS_CONSULTA_PENDENTE, STATUS_CONSULTA_CANCELADA
 from users.permissions import IsMedicoUser, HasRole
 from clinicas.models import Clinica # <<< Novo import
 from medicos.models import Medico
@@ -467,12 +467,12 @@ class PacienteRemarcarConsultaView(APIView):
                     status=status.HTTP_400_BAD_REQUEST
                 )
 
-            # 6. Validação: Apenas pode remarcar com pelo menos 3 dias de antecedência
-            # Nota: É mais seguro checar a diferença entre a data AGORA e a data NOVA, 
-            # pois a data antiga já passou pelo filtro.
-            if (data_hora_nova - timezone.now()).days < 3: 
+            # 6. Validação: Apenas pode remarcar com pelo menos 72 horas de antecedência
+            # CORREÇÃO CRÍTICA APLICADA AQUI: Usando timedelta(hours=72) para precisão.
+            tempo_minimo = timezone.now() + timedelta(hours=72)
+            if data_hora_nova < tempo_minimo: 
                 return Response(
-                    {"error": "Não é possível remarcar para menos de 3 dias de antecedência a partir de hoje."},
+                    {"error": "É necessário remarcar com pelo menos 72 horas (3 dias) de antecedência."},
                     status=status.HTTP_400_BAD_REQUEST
                 )
 
@@ -522,7 +522,74 @@ class PacienteRemarcarConsultaView(APIView):
                 {"error": f"Erro interno ao salvar a remarcação: {str(e)}"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
+            
+class PacienteCancelarConsultaView(APIView):
+    """
+    Endpoint para o PACIENTE logado cancelar uma consulta.
+    Implementa a regra de que o cancelamento só pode ser feito com mais de 72 horas de antecedência.
+    """
+    permission_classes = [IsAuthenticated]
 
+    def patch(self, request, pk, *args, **kwargs):
+        try:
+            # 1. Verifica se o usuário é paciente
+            if not request.user.user_type == 'PACIENTE':
+                return Response(
+                    {"error": "Apenas pacientes podem cancelar consultas."},
+                    status=status.HTTP_403_FORBIDDEN
+                )
+
+            # 2. Busca a consulta
+            consulta = get_object_or_404(Consulta, pk=pk)
+
+            # 3. Validação de permissão: a consulta deve ser do paciente logado
+            if consulta.paciente.user != request.user:
+                return Response(
+                    {"error": "Você não tem permissão para cancelar esta consulta."},
+                    status=status.HTTP_403_FORBIDDEN
+                )
+            
+            # 4. Checagem de antecedência (A REGRA DE NEGÓCIO)
+            # A consulta deve ser FUTURA e ter pelo menos 3 dias (72 horas) de antecedência
+            tempo_minimo = timezone.now() + timedelta(hours=72)
+            
+            if consulta.data_hora < tempo_minimo:
+                # Se a data da consulta for MENOR que o tempo mínimo
+                return Response(
+                    {"error": "O cancelamento deve ser feito com no mínimo 72 horas de antecedência."},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # 5. Cancela a consulta
+            try:
+                with transaction.atomic():
+                    # Altera o status
+                    status_anterior = consulta.status_atual
+                    consulta.status_atual = STATUS_CONSULTA_CANCELADA
+                    consulta.save()
+
+                    # Cria log
+                    ConsultaStatusLog.objects.create(
+                        consulta=consulta,
+                        status_novo=STATUS_CONSULTA_CANCELADA,
+                        pessoa=request.user
+                    )
+            
+            except Exception as e:
+                 return Response(
+                    {"error": f"Erro interno ao salvar o cancelamento: {str(e)}"},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                )
+
+            return Response({"message": "Consulta cancelada com sucesso!"}, status=status.HTTP_200_OK)
+
+        except Exception as e:
+            # Captura e retorna o erro real para debug
+            return Response(
+                {"error": f"Erro interno ao processar o cancelamento: {str(e)}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+            
 class ClinicaListView(APIView):
     """Retorna todas as clínicas ativas para seleção de agendamento."""
     permission_classes = [IsAuthenticated] 

@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 
 // Importa as telas principais
 import 'home_page.dart';
-import 'notificacoes_page.dart';
+// import 'notificacoes_page.dart'; // <<< REMOVER ESTA IMPORTAÇÃO
 import 'perfil_page.dart';
 import 'configuracoes_page.dart';
 
@@ -18,12 +18,13 @@ class MainNavigation extends StatefulWidget {
 }
 
 class _MainNavigationState extends State<MainNavigation> {
-  int _selectedIndex = 0;
+  // O índice 1 (Notificações) foi removido, agora o Perfil é o índice 1 e Configurações é o 2.
+  int _selectedIndex = 0; 
 
-  // Lista das páginas principais
+  // Lista das páginas principais (NotificacoesPage removida)
   final List<Widget> _pages = const [
     HomePage(),
-    NotificacoesPage(),
+    // NotificacoesPage(), // <<< REMOVER ESTA LINHA
     PerfilPage(),
     ConfiguracoesPage(),
   ];

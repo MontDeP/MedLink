@@ -1,5 +1,6 @@
 // lib/views/pages/configuracoes_page.dart
 import 'package:flutter/material.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart'; // Import necessário
 
 class ConfiguracoesPage extends StatefulWidget {
   const ConfiguracoesPage({super.key});
@@ -12,6 +13,21 @@ class _ConfiguracoesPageState extends State<ConfiguracoesPage> {
   bool temaEscuro = false;
   bool contrasteAlto = false;
   bool loginBiometrico = false;
+  
+  // Instância do Secure Storage para manipulação de tokens
+  final FlutterSecureStorage _storage = const FlutterSecureStorage();
+
+  // Função que executa o logout
+  Future<void> _logout() async {
+    // 1. Apaga os tokens (access e refresh)
+    await _storage.delete(key: 'access_token');
+    await _storage.delete(key: 'refresh_token');
+    
+    // 2. Navega para a tela de Login ('/') e remove todas as telas anteriores (pilha limpa)
+    if (mounted) {
+      Navigator.of(context).pushNamedAndRemoveUntil('/', (route) => false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -154,6 +170,16 @@ class _ConfiguracoesPageState extends State<ConfiguracoesPage> {
               // abrir modal com nomes e funções
             },
           ),
+          
+          const Divider(height: 24), // Adiciona um divisor antes do botão de Sair
+          
+          // NOVO BOTÃO DE SAIR
+          ListTile(
+            leading: const Icon(Icons.logout, color: Colors.red),
+            title: const Text('Sair', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
+            onTap: _logout, // Chama a função de logout
+          ),
+
           const SizedBox(height: 24),
         ],
       ),

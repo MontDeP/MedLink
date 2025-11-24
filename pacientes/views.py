@@ -7,12 +7,13 @@ from rest_framework.response import Response
 from django.utils import timezone
 from .models import Paciente
 from agendamentos.models import Consulta
+from agendamentos.consts import STATUS_CONSULTA_CONCLUIDA, STATUS_CONSULTA_PENDENTE, STATUS_CONSULTA_CANCELADA
 from users.permissions import IsMedicoOrSecretaria
-from users.models import User # CORREÇÃO 1: Importação do modelo User
+from users.models import User # Importação do modelo User
 # --- MINHA ADIÇÃO DE IMPORT ---
 from .serializers import PacienteCreateSerializer, PacienteProfileSerializer
 # --- FIM DA MINHA ADIÇÃO ---
-# CORREÇÃO 2: Adiciona DashboardConsultaSerializer
+# Adiciona DashboardConsultaSerializer
 from agendamentos.serializers import ConsultaSerializer, DashboardConsultaSerializer 
 from django.db.models import Q
 
@@ -123,6 +124,8 @@ class PacienteDashboardView(APIView):
         consultas_futuras = Consulta.objects.filter(
             paciente=paciente,
             data_hora__gte=timezone.now()
+        ).exclude( # Excluir Canceladas
+            status_atual=STATUS_CONSULTA_CANCELADA
         ).select_related(
             'medico__perfil_medico', 'clinica' # 'medico__user' foi removido daqui
         ).order_by('data_hora')
@@ -134,7 +137,7 @@ class PacienteDashboardView(APIView):
         serializer_context = {'request': request}
 
         # 4. Serializa a próxima consulta (se existir)
-        dados_proxima_consulta = None # CORREÇÃO 3: Inicialização para evitar o NameError
+        dados_proxima_consulta = None # Inicialização para evitar o NameError
         if proxima_consulta:
             dados_proxima_consulta = DashboardConsultaSerializer(
                 proxima_consulta, 
