@@ -30,7 +30,14 @@ SECRET_KEY = 'django-insecure-h0+vkovyjuu922z%3yicec-71%fs%^+-yj)ytlcb9_(dojl)6!
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = ["127.0.0.1", "10.0.2.2", "localhost", "medlink-backend-9dbq.onrender.com"]
+# Configuração para aceitar o domínio do Render e Localhost
+# O '*' libera tudo (Modo Guerra para a apresentação)
+ALLOWED_HOSTS = ["*"]
+
+# Adicione também isso para evitar erro de CSRF no cadastro (POST)
+CSRF_TRUSTED_ORIGINS = [
+    "https://medlink-backend-9dbq.onrender.com",
+]
 
 
 # Application definition
@@ -155,13 +162,13 @@ USE_TZ = False
 
 STATIC_URL = 'static/'
 # This production code might break development mode, so we check whether we're in DEBUG mode
-if DEBUG:
-    # Tell Django to copy static assets into a path called `staticfiles` (this is specific to Render)
-    STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
+
+# Tell Django to copy static assets into a path called `staticfiles` (this is specific to Render)
+STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
 
     # Enable the WhiteNoise storage backend, which compresses static files to reduce disk use
     # and renames the files with unique names for each version to support long-term caching
-    STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
+STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field

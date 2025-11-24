@@ -14,9 +14,10 @@ import '../models/dashboard_data_model.dart'; // DashboardData (do paciente)
 
 class ApiService {
   // ✅ Base URL unificada
-  final String baseUrl = kIsWeb
-      ? "http://127.0.0.1:8000" // Para Web
-      : "http://10.0.2.2:8000"; // Para Emulador Android (verifique se é seu caso)
+  //final String baseUrl = kIsWeb
+    //  ? "http://127.0.0.1:8000" // Para Web
+      //: "http://10.0.2.2:8000"; // Para Emulador Android (verifique se é seu caso)
+  final String baseUrl = "https://medlink-backend-9dbq.onrender.com";
 
   static String? _accessToken; // Token JWT salvo após o login
 
